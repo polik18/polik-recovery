@@ -1,0 +1,1722 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="這是一篇詳盡的技術教學部落格，引導您深入了解如何以 Rust 實作支援 NTFS、exFAT、APFS 與 File Carving 的底層資料救援引擎，並提供完整的 CLI 操作教學。">
+  <title>極限磁碟救援：用 Rust 重構安全、高效的資料復原引擎 | 技術專欄</title>
+  
+  <!-- Modern Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+  
+  <style>
+    /* Design Tokens */
+    :root {
+      --bg-main: #0B0F19;
+      --bg-card: rgba(22, 29, 49, 0.7);
+      --bg-nav: rgba(11, 15, 25, 0.8);
+      
+      --accent-cyan: #00F2FE;
+      --accent-purple: #9B51E0;
+      --accent-pink: #FF416C;
+      --accent-green: #00FF87;
+      
+      --text-primary: #F3F4F6;
+      --text-secondary: #9CA3AF;
+      --text-muted: #6B7280;
+      
+      --border-color: rgba(255, 255, 255, 0.08);
+      --border-hover: rgba(0, 242, 254, 0.3);
+      
+      --font-display: 'Outfit', sans-serif;
+      --font-body: 'Inter', sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    /* Global reset */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg-main);
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      line-height: 1.7;
+      overflow-x: hidden;
+      padding-top: 130px; /* Offset for Header (80px) + Selector Bar (50px) */
+      transition: padding-top 0.3s ease;
+    }
+
+    /* Selection styling */
+    ::selection {
+      background: rgba(0, 242, 254, 0.2);
+      color: var(--accent-cyan);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 10px;
+    }
+    ::-webkit-scrollbar-track {
+      background: var(--bg-main);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1F2937;
+      border-radius: 5px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--accent-cyan);
+    }
+
+    /* Layout */
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 24px;
+    }
+
+    /* Premium Header / Nav */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 80px;
+      background: var(--bg-nav);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 100;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+
+    .nav-container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo-area {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 20px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .logo-icon {
+      width: 32px;
+      height: 32px;
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--bg-main);
+      font-size: 16px;
+      -webkit-text-fill-color: initial;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 32px;
+    }
+
+    .nav-links a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-weight: 500;
+      transition: color 0.2s ease;
+      font-size: 15px;
+    }
+
+    .nav-links a:hover {
+      color: var(--accent-cyan);
+    }
+
+    /* Mode Selector Bar (Sticky Sub-nav) */
+    .mode-selector-bar {
+      position: fixed;
+      top: 80px;
+      left: 0;
+      right: 0;
+      height: 50px;
+      background: rgba(11, 15, 25, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border-color);
+      z-index: 99;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .selector-flex {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      width: 100%;
+    }
+
+    .selector-label {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 14px;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .selector-buttons {
+      display: flex;
+      gap: 8px;
+    }
+
+    .selector-btn {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--border-color);
+      color: var(--text-secondary);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-family: var(--font-display);
+      font-size: 12.5px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .selector-btn:hover {
+      color: var(--text-primary);
+      border-color: var(--border-hover);
+    }
+
+    .selector-btn.active {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      color: #0B0F19;
+      border: none;
+      font-weight: 700;
+      box-shadow: 0 0 15px rgba(0, 242, 254, 0.3);
+    }
+
+    /* Mode Display Logic */
+    body.mode-novice .expert-only {
+      display: none !important;
+    }
+    body.mode-expert .novice-only {
+      display: none !important;
+    }
+
+    /* Mode Tags */
+    .mode-tag {
+      display: none;
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-weight: 600;
+      margin-left: 8px;
+      vertical-align: middle;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    body.mode-all .mode-tag {
+      display: inline-block;
+    }
+    .mode-tag-novice {
+      background: rgba(0, 255, 87, 0.1);
+      color: var(--accent-green);
+      border: 1px solid rgba(0, 255, 87, 0.2);
+    }
+    .mode-tag-expert {
+      background: rgba(155, 81, 224, 0.1);
+      color: #B975FF;
+      border: 1px solid rgba(155, 81, 224, 0.2);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 60px 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero::before {
+      content: '';
+      position: absolute;
+      top: -10%;
+      left: 50%;
+      transform: translate(-50%, 0);
+      width: 600px;
+      height: 300px;
+      background: radial-gradient(circle, rgba(155, 81, 224, 0.15) 0%, rgba(0, 0, 0, 0) 70%);
+      filter: blur(50px);
+      z-index: -1;
+      pointer-events: none;
+    }
+
+    .hero-meta {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+      color: var(--accent-cyan);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: var(--font-display);
+      font-size: 44px;
+      font-weight: 800;
+      line-height: 1.25;
+      margin-bottom: 24px;
+      background: linear-gradient(135deg, #FFFFFF 30%, #D1D5DB 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: 17px;
+      color: var(--text-secondary);
+      max-width: 750px;
+      margin: 0 auto 32px auto;
+    }
+
+    .hero-tags {
+      display: flex;
+      justify-content: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .badge {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 13px;
+      font-weight: 500;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .badge::before {
+      content: '';
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent-cyan);
+    }
+    
+    .badge-purple::before { background: var(--accent-purple); }
+    .badge-pink::before { background: var(--accent-pink); }
+    .badge-green::before { background: var(--accent-green); }
+
+    /* Main Content & Sidebar Grid */
+    .main-grid {
+      display: grid;
+      grid-template-columns: 3fr 1fr;
+      gap: 48px;
+      margin-top: 20px;
+    }
+
+    body.mode-novice .main-grid {
+      grid-template-columns: 1fr; /* Hide sidebar for novice clean reading */
+    }
+
+    @media (max-width: 900px) {
+      .main-grid {
+        grid-template-columns: 1fr !important;
+      }
+      .sidebar {
+        order: -1;
+      }
+    }
+
+    /* Sidebar / Table of Contents */
+    .sidebar {
+      position: sticky;
+      top: 150px;
+      height: fit-content;
+    }
+
+    .sidebar-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 24px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .sidebar-title {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 16px;
+      color: var(--text-primary);
+      border-left: 3px solid var(--accent-purple);
+      padding-left: 10px;
+    }
+
+    .toc-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .toc-list a {
+      color: var(--text-secondary);
+      text-decoration: none;
+      font-size: 14px;
+      transition: all 0.2s ease;
+      display: block;
+    }
+
+    .toc-list a:hover {
+      color: var(--accent-cyan);
+      transform: translateX(4px);
+    }
+
+    /* Articles / Blog elements */
+    article {
+      font-size: 16px;
+      color: var(--text-secondary);
+    }
+
+    h2 {
+      font-family: var(--font-display);
+      font-size: 28px;
+      font-weight: 700;
+      color: var(--text-primary);
+      margin: 48px 0 20px 0;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    h3 {
+      font-family: var(--font-display);
+      font-size: 20px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin: 32px 0 16px 0;
+    }
+
+    p {
+      margin-bottom: 24px;
+    }
+
+    strong {
+      color: var(--text-primary);
+    }
+
+    /* GitHub Alert Callouts */
+    .callout {
+      border-left: 4px solid var(--accent-cyan);
+      background: rgba(0, 242, 254, 0.03);
+      padding: 20px;
+      border-radius: 0 12px 12px 0;
+      margin: 32px 0;
+    }
+
+    .callout-title {
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 15px;
+    }
+
+    .callout-tip {
+      border-left-color: var(--accent-green);
+      background: rgba(0, 255, 135, 0.02);
+    }
+    .callout-important {
+      border-left-color: var(--accent-purple);
+      background: rgba(155, 81, 224, 0.02);
+    }
+    .callout-warning {
+      border-left-color: var(--accent-pink);
+      background: rgba(255, 65, 108, 0.02);
+    }
+
+    /* Interactive Tabs Section */
+    .tabs-wrapper {
+      margin: 40px 0;
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      background: var(--bg-card);
+      overflow: hidden;
+    }
+
+    .tabs-header {
+      background: rgba(0, 0, 0, 0.2);
+      display: flex;
+      border-bottom: 1px solid var(--border-color);
+      padding: 0 12px;
+    }
+
+    .tab-btn {
+      background: none;
+      border: none;
+      color: var(--text-secondary);
+      font-family: var(--font-display);
+      font-size: 14px;
+      font-weight: 600;
+      padding: 16px 20px;
+      cursor: pointer;
+      position: relative;
+      transition: color 0.2s ease;
+    }
+
+    .tab-btn:hover {
+      color: var(--text-primary);
+    }
+
+    .tab-btn.active {
+      color: var(--accent-cyan);
+    }
+
+    .tab-btn.active::after {
+      content: '';
+      position: absolute;
+      bottom: -1px;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: var(--accent-cyan);
+    }
+
+    .tab-pane {
+      display: none;
+      padding: 24px;
+    }
+
+    .tab-pane.active {
+      display: block;
+      animation: fadeIn 0.4s ease;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Grid Layout for Cards */
+    .features-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+      margin: 32px 0;
+    }
+
+    @media (max-width: 600px) {
+      .features-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .feature-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 24px;
+      transition: all 0.3s ease;
+    }
+
+    .feature-card:hover {
+      border-color: var(--border-hover);
+      transform: translateY(-4px);
+      box-shadow: 0 8px 30px rgba(0, 242, 254, 0.05);
+    }
+
+    .card-icon {
+      font-size: 24px;
+      margin-bottom: 12px;
+    }
+
+    .card-title {
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+    }
+
+    /* Code Blocks styling */
+    pre {
+      background: #060913;
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+      overflow-x: auto;
+      margin: 24px 0;
+      position: relative;
+    }
+
+    code {
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      color: #E5E7EB;
+    }
+
+    /* Inline code */
+    p code, li code {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-size: 13px;
+      color: #F3F4F6;
+    }
+
+    .comment { color: #6B7280; }
+    .keyword { color: #F43F5E; }
+    .type { color: #60A5FA; }
+    .string { color: #34D399; }
+    .number { color: #F59E0B; }
+
+    /* Footer styling */
+    footer {
+      border-top: 1px solid var(--border-color);
+      padding: 40px 0;
+      margin-top: 80px;
+      text-align: center;
+      color: var(--text-muted);
+      font-size: 14px;
+    }
+
+    .btn-group {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 32px;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      background: linear-gradient(135deg, var(--accent-cyan), var(--accent-purple));
+      color: #000;
+      border: none;
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 20px rgba(0, 242, 254, 0.2);
+    }
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 25px rgba(0, 242, 254, 0.4);
+    }
+    .btn-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid var(--border-color);
+      color: var(--text-primary);
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 15px;
+      cursor: pointer;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.3s ease;
+    }
+    .btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      border-color: var(--text-secondary);
+    }
+    
+    /* Mockup design */
+    .mockup-container {
+      margin: 40px 0;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      padding: 20px;
+      position: relative;
+      overflow: hidden;
+    }
+    .mockup-title {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 13px;
+      color: var(--text-secondary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .mockup-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: var(--accent-pink);
+      display: inline-block;
+    }
+    .mockup-dot-yellow { background: #F59E0B; }
+    .mockup-dot-green { background: var(--accent-green); }
+
+    /* Interactive SVG styles */
+    .mockup-vfs-item rect {
+      transition: fill 0.2s ease, stroke 0.2s ease;
+    }
+    .mockup-vfs-item:hover rect {
+      fill: rgba(255, 255, 255, 0.05);
+    }
+    .mockup-vfs-item.active rect {
+      fill: rgba(0, 242, 254, 0.08) !important;
+      stroke: rgba(0, 242, 254, 0.25) !important;
+    }
+
+    /* Interactive Simulator */
+    .simulator-wrapper {
+      background: rgba(15, 23, 42, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 16px;
+      margin: 40px 0;
+      overflow: hidden;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.35);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+    .simulator-header {
+      background: rgba(30, 41, 59, 0.4);
+      padding: 18px 24px;
+      border-bottom: 1px solid var(--border-color);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .simulator-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--accent-cyan);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .simulator-badge {
+      background: rgba(0, 242, 254, 0.1);
+      color: var(--accent-cyan);
+      border: 1px solid rgba(0, 242, 254, 0.3);
+      font-size: 11.5px;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-weight: 600;
+    }
+    .simulator-body {
+      padding: 24px;
+    }
+    .sim-section {
+      margin-bottom: 28px;
+    }
+    .sim-section-title {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text-primary);
+      margin-bottom: 12px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .catalog-cards {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+    }
+    @media (max-width: 600px) {
+      .catalog-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+    .catalog-card {
+      background: rgba(22, 29, 49, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 16px;
+      transition: all 0.3s ease;
+      position: relative;
+    }
+    .card-status-badge {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      font-size: 11px;
+      padding: 2px 6px;
+      border-radius: 4px;
+      font-weight: 600;
+    }
+    .status-allocated {
+      background: rgba(0, 255, 135, 0.1);
+      color: var(--accent-green);
+      border: 1px solid rgba(0, 255, 135, 0.2);
+    }
+    .status-deleted {
+      background: rgba(255, 65, 108, 0.1);
+      color: var(--accent-pink);
+      border: 1px solid rgba(255, 65, 108, 0.2);
+    }
+    .card-filename {
+      font-family: var(--font-display);
+      font-weight: 700;
+      font-size: 15px;
+      color: var(--text-primary);
+      margin-bottom: 6px;
+      transition: all 0.3s ease;
+    }
+    .card-meta {
+      font-size: 12px;
+      color: var(--text-secondary);
+    }
+    .sector-pointer {
+      color: var(--accent-cyan);
+      font-weight: 600;
+    }
+    .disk-sectors {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 768px) {
+      .disk-sectors {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    .disk-sector {
+      background: rgba(30, 41, 59, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px;
+      font-family: var(--font-mono);
+      transition: all 0.3s ease;
+    }
+    .sector-occupied {
+      border-color: rgba(0, 255, 135, 0.2);
+      background: rgba(0, 255, 135, 0.02);
+    }
+    .sector-num {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      padding-bottom: 4px;
+    }
+    .sector-content {
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      word-break: break-all;
+      height: 48px;
+      display: flex;
+      align-items: center;
+      transition: all 0.3s ease;
+    }
+    .sim-controls-wrapper {
+      border-top: 1px solid var(--border-color);
+      padding-top: 20px;
+    }
+    .sim-buttons {
+      display: flex;
+      gap: 12px;
+      flex-wrap: wrap;
+      margin-bottom: 16px;
+    }
+    .sim-btn {
+      font-family: var(--font-display);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 16px;
+      border-radius: 6px;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s ease;
+    }
+    .sim-btn:disabled {
+      opacity: 0.3;
+      cursor: not-allowed;
+    }
+    .btn-danger {
+      background: rgba(255, 65, 108, 0.15);
+      color: var(--accent-pink);
+      border: 1px solid rgba(255, 65, 108, 0.3);
+    }
+    .btn-danger:hover:not(:disabled) {
+      background: var(--accent-pink);
+      color: #fff;
+    }
+    .btn-success {
+      background: rgba(0, 255, 135, 0.15);
+      color: var(--accent-green);
+      border: 1px solid rgba(0, 255, 135, 0.3);
+    }
+    .btn-success:hover:not(:disabled) {
+      background: var(--accent-green);
+      color: #000;
+    }
+    .btn-warning {
+      background: rgba(245, 158, 11, 0.15);
+      color: #F59E0B;
+      border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .btn-warning:hover:not(:disabled) {
+      background: #F59E0B;
+      color: #000;
+    }
+    .btn-reset {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text-primary);
+      border: 1px solid var(--border-color);
+      margin-left: auto;
+    }
+    .btn-reset:hover {
+      background: rgba(255, 255, 255, 0.1);
+    }
+    .sim-terminal {
+      background: #060913;
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px 18px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      color: var(--accent-cyan);
+      min-height: 48px;
+    }
+    .terminal-prompt {
+      color: var(--accent-pink);
+      font-weight: 700;
+    }
+
+    /* FAQ Section */
+    .faq-section {
+      margin-top: 60px;
+      border-top: 1px solid var(--border-color);
+      padding-top: 40px;
+    }
+    .faq-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 24px;
+      margin-top: 24px;
+    }
+    .faq-item {
+      background: rgba(255, 255, 255, 0.01);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 20px;
+    }
+    .faq-question {
+      font-family: var(--font-display);
+      font-weight: 600;
+      font-size: 16px;
+      color: var(--text-primary);
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .faq-answer {
+      font-size: 14.5px;
+      color: var(--text-secondary);
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Navigation -->
+  <header>
+    <div class="nav-container">
+      <div class="logo-area">
+        <div class="logo-icon">🦀</div>
+        <span>Polik Recovery Core</span>
+      </div>
+      <nav class="nav-links">
+        <a href="#intro">簡介</a>
+        <a href="#novice-guide" class="novice-only">小白指南</a>
+        <a href="#desktop-app" class="novice-only">桌面端</a>
+        <a href="#architecture" class="expert-only">架構設計</a>
+        <a href="#tutorial" class="expert-only">實戰教學</a>
+        <a href="#faq">常見問答</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Mode Selector Sub-nav -->
+  <div class="mode-selector-bar">
+    <div class="container selector-flex">
+      <div class="selector-label">🎯 選擇您的閱讀視角：</div>
+      <div class="selector-buttons">
+        <button class="selector-btn active" id="btn-mode-all" onclick="changeMode('all')">🌌 雙軌並存 (全部內容)</button>
+        <button class="selector-btn" id="btn-mode-novice" onclick="changeMode('novice')">👶 小白科普 (極簡易懂)</button>
+        <button class="selector-btn" id="btn-mode-expert" onclick="changeMode('expert')">💻 專家深研 (硬核技術)</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Hero -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-meta">Desktop App & Technical Deep Dive</div>
+      <h1>極限磁碟救援：用 Rust 重構安全、高效的資料復原引擎</h1>
+      <p class="hero-subtitle">
+        兼具極簡圖形化介面（Tauri 桌面端）與硬核技術深研的多功能資料復原系統。實現 NTFS 常駐/非常駐屬性、exFAT 目錄樹遍歷、APFS B-Tree 遍歷與高置信度 File Carving 的唯讀安全救援。
+      </p>
+
+      <div class="btn-group">
+        <a href="file:///Users/huangjianzhe/Desktop/資料救援/target/release/bundle/dmg/polik-recovery-desktop_0.1.0_aarch64.dmg" class="btn-primary novice-only">
+          <span>💾 下載 macOS 桌面圖形版 (.dmg)</span>
+        </a>
+        <a href="#tutorial" class="btn-secondary expert-only">
+          <span>💻 閱讀專業 CLI 操作指引</span>
+        </a>
+      </div>
+      
+      <div class="hero-tags">
+        <div class="badge">Rust 1.85+</div>
+        <div class="badge badge-purple">NTFS & exFAT Scan</div>
+        <div class="badge badge-pink">APFS B-Tree VFS</div>
+        <div class="badge badge-green">File Carving (OLE/MP4)</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Main Grid -->
+  <main class="container">
+    <div class="main-grid">
+      
+      <!-- Content Area -->
+      <article>
+        
+        <section id="intro">
+          <p>
+            在電腦鑑識（Computer Forensics）和災難復原領域中，最令人頭痛的莫過於檔案系統嚴重損毀、硬碟分割表遺失，甚至是被格式化後的殘局。市面上的救援工具雖然琳瑯滿目，但底層技術細節多被包裝成黑盒子。
+          </p>
+          <p>
+            本篇文章將為您全面揭密本專案 —— <strong>Polik Recovery Engine</strong>。這是一個基於 <strong>Rust Workspace</strong> 精巧架構設計的資料救援引擎。我們不僅以零複製（Zero-copy）的高效邏輯重新實作了多種經典與現代檔案系統的解析器，更配備了高置信度的特徵碼雕刻模組，使您能夠在檔案系統完全損壞的磁碟映像上精準抽取重要檔案。
+          </p>
+          
+          <div class="callout">
+            <div class="callout-title">⚠️ 安全原則：唯讀、可稽核</div>
+            資料救援的最核心天條是「<strong>絕對不要在受損磁區上進行任何寫入操作</strong>」。本引擎完全基於唯讀的 `BlockSource` 管道設計，所有的寫入操作均由 `Safe Writer` 接管，並會被完整雜湊（SHA-256）以供數位鑑識稽核。
+          </div>
+        </section>
+
+        <!-- Column Separator / Layman Section -->
+        <section id="novice-guide" class="novice-only">
+          <h2>💡 小白磁碟救援速成班（生活化比喻）<span class="mode-tag mode-tag-novice">小白友善</span></h2>
+          <p>
+            如果您不是程式設計師，覺得磁碟底層技術太過艱深，沒關係！以下用「圖書館」的日常生活場景，為您快速科普本引擎是如何在不破壞任何資料的情況下，幫您把消失的檔案拯救回來：
+          </p>
+
+          <div class="features-grid">
+            <div class="feature-card">
+              <div class="card-icon">📖</div>
+              <div class="card-title">什麼是檔案系統？（圖書目錄卡）</div>
+              <p style="font-size: 13.5px; margin: 0; line-height: 1.6; color: var(--text-secondary);">
+                硬碟就像一個巨大的圖書館。NTFS、exFAT 與 APFS 就是不同的「圖書編目系統」。當您刪除檔案時，圖書館員只是把<strong>目錄卡丟掉</strong>，但書架上的書（實體檔案）其實還好好地放在原地！
+              </p>
+            </div>
+            
+            <div class="feature-card">
+              <div class="card-icon">📌</div>
+              <div class="card-title">什麼是常駐資料？（便利貼）</div>
+              <p style="font-size: 13.5px; margin: 0; line-height: 1.6; color: var(--text-secondary);">
+                如果書非常薄（極小的檔案），圖書館員懶得跑去架上放，會<strong>直接寫在目錄卡背面</strong>（常駐資料）。本引擎能直接在卡片上把內容抄給您，連跑架子的功夫都省了。
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <div class="card-icon">🏺</div>
+              <div class="card-title">什麼是檔案雕刻？（數位考古學）</div>
+              <p style="font-size: 13.5px; margin: 0; line-height: 1.6; color: var(--text-secondary);">
+                當圖書目錄卡全部被大火燒毀時，我們就派「雕刻器」逐一翻找架子，根據書本獨特的「封面特徵 (Header)」與「封底特徵 (Footer)」（如 PNG/JPEG 圖片特徵）來挖出檔案，進行無痛重建。
+              </p>
+            </div>
+
+            <div class="feature-card">
+              <div class="card-icon">📦</div>
+              <div class="card-title">這套軟體安全嗎？（唯讀天條）</div>
+              <p style="font-size: 13.5px; margin: 0; line-height: 1.6; color: var(--text-secondary);">
+                本引擎嚴格遵守「唯讀 (Read-only) 規則」，就像一位只能看、不能寫字的圖書館檢查員。我們<strong>絕對不會動到您受損的硬碟</strong>，而是把救出的資料安全複製到您指定的新隨身碟或新資料夾中。
+              </p>
+            </div>
+          </div>
+
+          <!-- Interactive Simulator Widget -->
+          <div class="simulator-wrapper">
+            <div class="simulator-header">
+              <div class="simulator-title">🎮 互動沙盒：磁碟救援物理運作模擬器</div>
+              <div class="simulator-badge">點擊按鈕進行模擬</div>
+            </div>
+            
+            <div class="simulator-body">
+              <!-- Part 1: Catalog metadata cards -->
+              <div class="sim-section">
+                <div class="sim-section-title">📂 檔案編目目錄卡 (Metadata Index)</div>
+                <div class="catalog-cards">
+                  <div class="catalog-card" id="card-report">
+                    <div class="card-status-badge status-allocated" id="badge-report">已分配 (Allocated)</div>
+                    <div class="card-filename">📄 report.txt</div>
+                    <div class="card-meta">大小: 42 B | 指向磁區: <span class="sector-pointer">Sector 2</span></div>
+                  </div>
+                  <div class="catalog-card" id="card-photo" style="opacity: 0.8;">
+                    <div class="card-status-badge status-allocated">已分配 (Allocated)</div>
+                    <div class="card-filename">🖼️ family_photo.png</div>
+                    <div class="card-meta">大小: 15 KB | 指向磁區: <span class="sector-pointer">Sector 3</span></div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Part 2: Disk Sectors Physical blocks -->
+              <div class="sim-section">
+                <div class="sim-section-title">💿 磁碟實體資料區 (Physical Sectors)</div>
+                <div class="disk-sectors">
+                  <div class="disk-sector" id="sector-1">
+                    <div class="sector-num">Sector 1 (系統引導區)</div>
+                    <div class="sector-content" style="color: var(--text-muted);">[引導區 Block]</div>
+                  </div>
+                  <div class="disk-sector sector-occupied" id="sector-2">
+                    <div class="sector-num">Sector 2 (檔案資料區)</div>
+                    <div class="sector-content" id="content-sector-2">"報告內容: Rust 救援引擎完成測試。"</div>
+                  </div>
+                  <div class="disk-sector sector-occupied" id="sector-3">
+                    <div class="sector-num">Sector 3 (檔案資料區)</div>
+                    <div class="sector-content" id="content-sector-3">[family_photo.png 二進位影像]</div>
+                  </div>
+                  <div class="disk-sector" id="sector-4">
+                    <div class="sector-num">Sector 4 (空白閒置區)</div>
+                    <div class="sector-content" id="content-sector-4">[ 空白無資料 ]</div>
+                  </div>
+                </div>
+              </div>
+              
+              <!-- Part 3: Controls and Terminal Info -->
+              <div class="sim-controls-wrapper">
+                <div class="sim-buttons">
+                  <button class="sim-btn btn-danger" id="btn-sim-delete" onclick="simDelete()">❌ 步驟一：模擬刪除 report.txt</button>
+                  <button class="sim-btn btn-success" id="btn-sim-recover" disabled onclick="simRecover()">🔍 步驟二：執行「唯讀」資料救援</button>
+                  <button class="sim-btn btn-warning" id="btn-sim-overwrite" disabled onclick="simOverwrite()">⚠️ 步驟三：寫入新資料 (警告演示)</button>
+                  <button class="sim-btn btn-reset" onclick="simReset()">🔄 重置模擬</button>
+                </div>
+                <div class="sim-terminal" id="sim-terminal-log">
+                  <span class="terminal-prompt">></span> 系統準備就緒。請點擊「步驟一」按鈕開始模擬檔案刪除。
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Tauri App Showcase Section -->
+        <section id="desktop-app" class="novice-only">
+          <h2>⚡ 現代化 Tauri 2.0 桌面端圖形介面<span class="mode-tag mode-tag-novice">小白友善</span></h2>
+          <p>
+            為了讓非專業使用者不需要接觸命令列（CLI），本專案已使用 <strong>Tauri 2.0 + HTML5</strong> 框架封裝成精美的桌面版應用程式。雙擊即可開啟直覺的點擊操作，在背景透過極速 Rust 引擎與安全寫入器為您把關資料。
+          </p>
+
+          <!-- SVG Mockup of Desktop App -->
+          <div class="mockup-container">
+            <div class="mockup-title">
+              <span class="mockup-dot"></span>
+              <span class="mockup-dot mockup-dot-yellow"></span>
+              <span class="mockup-dot mockup-dot-green"></span>
+              <span style="margin-left: 8px; font-family: var(--font-mono); font-size: 12px;">Polik Recovery Workbench UI (Tauri macOS - 互動演示)</span>
+            </div>
+            
+            <svg viewBox="0 0 800 480" width="100%" height="auto" style="background:#0F172A; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05);">
+              <!-- Sidebar -->
+              <rect x="0" y="0" width="180" height="480" fill="#090D1A" />
+              <line x1="180" y1="0" x2="180" y2="480" stroke="rgba(255,255,255,0.08)" />
+              
+              <!-- Brand Logo -->
+              <rect x="15" y="20" width="28" height="28" rx="6" fill="url(#brandGrad)" />
+              <text x="50" y="38" fill="#F3F4F6" font-family="'Outfit', sans-serif" font-weight="700" font-size="12">RECOVERY CORE</text>
+              
+              <!-- Nav items -->
+              <rect x="12" y="70" width="156" height="32" rx="6" fill="rgba(0,242,254,0.08)" stroke="rgba(0,242,254,0.15)" />
+              <text x="24" y="90" fill="#00F2FE" font-family="sans-serif" font-size="11" font-weight="600">⚡ NTFS 磁碟掃描</text>
+              
+              <text x="24" y="130" fill="#9CA3AF" font-family="sans-serif" font-size="11">💾 exFAT 磁碟掃描</text>
+              <text x="24" y="170" fill="#9CA3AF" font-family="sans-serif" font-size="11">🧭 APFS 容器檢查</text>
+              <text x="24" y="210" fill="#9CA3AF" font-family="sans-serif" font-size="11">🔍 Raw 檔案彫刻</text>
+              
+              <!-- Main Workspace -->
+              <rect x="180" y="0" width="620" height="480" fill="#0B0F19" />
+              
+              <!-- Top bar controls -->
+              <rect x="200" y="20" width="400" height="32" rx="6" fill="#1E293B" stroke="rgba(255,255,255,0.05)" />
+              <text x="215" y="40" fill="#9CA3AF" font-family="monospace" font-size="11">/dev/rdisk2s1 (NTFS Partition)</text>
+              <rect x="610" y="20" width="80" height="32" rx="6" fill="url(#btnGrad)" />
+              <text x="625" y="40" fill="#000" font-family="sans-serif" font-size="11" font-weight="bold">開始掃描</text>
+              
+              <!-- Middle Grid: Left is VFS list, Right is details -->
+              <!-- VFS Pane -->
+              <rect x="200" y="70" width="340" height="340" rx="8" fill="rgba(22,29,49,0.5)" stroke="rgba(255,255,255,0.05)" />
+              <text x="215" y="95" fill="#E5E7EB" font-family="sans-serif" font-weight="bold" font-size="12">🔍 已辨識之虛擬檔案結構 (VFS)</text>
+              
+              <text x="215" y="130" fill="#00FF87" font-family="monospace" font-size="11">📁 / (Root)</text>
+              
+              <!-- Interactive VFS List -->
+              <g id="mockup-item-mft" class="mockup-vfs-item" cursor="pointer" onclick="clickMockupItem('mft')">
+                <rect x="210" y="145" width="320" height="25" fill="transparent" rx="4" />
+                <text x="230" y="161" fill="#9CA3AF" font-family="monospace" font-size="11">📄 /$MFT (16.0 KB) - Allocated</text>
+              </g>
+              
+              <g id="mockup-item-report" class="mockup-vfs-item active" cursor="pointer" onclick="clickMockupItem('report')">
+                <rect x="210" y="175" width="320" height="25" fill="rgba(0, 242, 254, 0.1)" stroke="rgba(0, 242, 254, 0.2)" rx="4" />
+                <text x="230" y="191" fill="#FF416C" font-family="monospace" font-size="11">📄 /report.txt (42 B) - Deleted 🌟 (已選)</text>
+              </g>
+              
+              <g id="mockup-item-doc" class="mockup-vfs-item" cursor="pointer" onclick="clickMockupItem('doc')">
+                <rect x="210" y="205" width="320" height="25" fill="transparent" rx="4" />
+                <text x="230" y="221" fill="#9CA3AF" font-family="monospace" font-size="11">📄 /document_old.doc (15.5 KB) - Deleted</text>
+              </g>
+              
+              <!-- Details Pane -->
+              <rect x="550" y="70" width="230" height="340" rx="8" fill="rgba(22,29,49,0.5)" stroke="rgba(255,255,255,0.05)" />
+              <text x="565" y="95" fill="#E5E7EB" font-family="sans-serif" font-weight="bold" font-size="12">📋 檔案屬性詳情</text>
+              <text x="565" y="130" fill="#9CA3AF" font-family="sans-serif" font-size="11">名稱: <tspan id="mockup-det-name" fill="#F3F4F6">report.txt</tspan></text>
+              <text x="565" y="155" fill="#9CA3AF" font-family="sans-serif" font-size="11">狀態: <tspan id="mockup-det-status" fill="#FF416C">已刪除 (Deleted)</tspan></text>
+              <text x="565" y="180" fill="#9CA3AF" font-family="sans-serif" font-size="11">大小: <tspan id="mockup-det-size" fill="#F3F4F6">42 位元組</tspan></text>
+              <text x="565" y="205" fill="#9CA3AF" font-family="sans-serif" font-size="11">安全稽核: <tspan id="mockup-det-hash" fill="#00F2FE">SHA-256 合規</tspan></text>
+              
+              <!-- Recovery action inside mockup -->
+              <g cursor="pointer" onclick="alert('🎉 桌面端模擬：已執行真實復原！該檔案已成功安全輸出到您指定的外部目錄中（且無寫入損壞）。')">
+                <rect id="mockup-btn-rect" x="565" y="350" width="200" height="36" rx="6" fill="#10B981" />
+                <text id="mockup-btn-text" x="665" y="372" fill="#FFFFFF" font-family="sans-serif" font-size="11" font-weight="bold" text-anchor="middle">💾 執行真實復原</text>
+              </g>
+              
+              <!-- Bottom status bar -->
+              <line x1="180" y1="430" x2="800" y2="430" stroke="rgba(255,255,255,0.08)" />
+              <text x="200" y="455" fill="#9CA3AF" font-family="sans-serif" font-size="11">Tauri IPC Status: <tspan fill="#00FF87">Connected to Rust Engine v0.1.0</tspan></text>
+              
+              <!-- Gradients -->
+              <defs>
+                <linearGradient id="brandGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#00F2FE" />
+                  <stop offset="100%" stop-color="#9B51E0" />
+                </linearGradient>
+                <linearGradient id="btnGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stop-color="#00F2FE" />
+                  <stop offset="100%" stop-color="#00FF87" />
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+
+          <div class="callout callout-important">
+            <div class="callout-title">💡 簡單三步驟，小白救檔案無門檻</div>
+            <ol style="margin-left: 20px; font-size: 14.5px; line-height: 1.8;">
+              <li>選擇要掃描的<strong>磁碟區段路徑</strong>或<strong>映像檔案</strong>。</li>
+              <li>點擊右上角<strong>「開始掃描」</strong>，數秒內即會生成虛擬目錄樹。</li>
+              <li>在清單中勾選您要復原的項目，點選<strong>「💾 執行真實復原」</strong>即可還原！</li>
+            </ol>
+          </div>
+        </section>
+
+        <!-- Dynamic Architecture Tabs -->
+        <section id="architecture" class="expert-only">
+          <h2>🏗️ 系統架構與四大核心引擎<span class="mode-tag mode-tag-expert">專家特調</span></h2>
+          <p>
+            整個引擎以功能劃分為數個微型模組（Crates），以達成低耦合與高測試覆蓋率。以下為核心模組的設計架構：
+          </p>
+
+          <div class="tabs-wrapper">
+            <div class="tabs-header">
+              <button class="tab-btn active" onclick="switchTab(event, 'tab-ntfs')">NTFS 核心</button>
+              <button class="tab-btn" onclick="switchTab(event, 'tab-exfat')">exFAT 掃描</button>
+              <button class="tab-btn" onclick="switchTab(event, 'tab-apfs')">APFS 驗證</button>
+              <button class="tab-btn" onclick="switchTab(event, 'tab-carver')">File Carver</button>
+            </div>
+            
+            <!-- NTFS Tab -->
+            <div id="tab-ntfs" class="tab-pane active">
+              <h3>NTFS MVP 核心閉環與常駐資料提取</h3>
+              <p>
+                NTFS 使用 <strong>MFT (Master File Table)</strong> 紀錄來管理硬碟上的所有檔案。當檔案非常小（一般小於 700 位元組）時，NTFS 會直接把檔案內容放在 MFT 紀錄的 <code>$DATA</code> 屬性內（稱為<strong>常駐資料 Resident Data</strong>）。當檔案變大時，內容才會轉存至外部磁區（<strong>非常駐資料 Non-Resident Data</strong>），並以 <strong>Data Runs (映射鏈)</strong> 的形式指明磁區位置。
+              </p>
+              <p>
+                本引擎同時支援常駐與非常駐 `$DATA` 屬性提取，並具備更新序列校正（Fixup Array Verification）功能，防範磁區寫入不完整所產生的損壞數據。
+              </p>
+              <div class="features-grid">
+                <div class="feature-card">
+                  <div class="card-icon">💾</div>
+                  <div class="card-title">常駐 & 非常駐自動適配</div>
+                  <p style="font-size: 13px; margin: 0;">自動識別 `$DATA` 屬性類型。小檔案由記憶體直接 clone 輸出，大檔案則依據 cluster 映射鏈走訪 BlockSource 讀取。</p>
+                </div>
+                <div class="feature-card">
+                  <div class="card-icon">🛡️</div>
+                  <div class="card-title">旗標安全檢測</div>
+                  <p style="font-size: 13px; margin: 0;">精準解碼 MFT 屬性頭的 flag 狀態，主動判別與標示壓縮（Compressed）、加密（Encrypted）與稀疏（Sparse）檔案，預防救援過程崩潰。</p>
+                </div>
+              </div>
+            </div>
+
+            <!-- exFAT Tab -->
+            <div id="tab-exfat" class="tab-pane">
+              <h3>exFAT 遍歷與刪除檔案檢索</h3>
+              <p>
+                相較於 NTFS 的複雜性，exFAT 的結構更為緊湊。其目錄項目以 32 位元組為單位成組（Primary Directory Entry Group）排列。當一個檔案被刪除時，其對應的 File Entry（<code>0x85</code>）和 Stream Extension Entry（<code>0xC0</code>）首位元組會分別被置換成 <code>0x05</code> 和 <code>0x40</code>。
+              </p>
+              <p>
+                我們的 exFAT 解析模組能夠完整解碼這些狀態，在掃描時主動找出<strong>已被刪除的目錄與檔案</strong>，並透過無 FAT 鏈結（NoFatChain）或尋找 FAT 表的方式動態重建完整的虛擬樹狀路徑！
+              </p>
+            </div>
+
+            <!-- APFS Tab -->
+            <div id="tab-apfs" class="tab-pane">
+              <h3>APFS 超級區塊校驗與 B-Tree 遍歷</h3>
+              <p>
+                APFS（Apple File System）是蘋果系統的現代檔案系統。其在容器層級（Container Superblock）及卷層級（Volume Superblock）都大量使用了 <strong>Fletcher64 校驗演算法</strong> 來確保元資料（Metadata）的完整性。
+              </p>
+              <p>
+                除了校驗碼驗證外，本引擎更實作了完整的 <strong>APFS B-Tree 遍歷與走訪演算法</strong>，深度解析目錄記錄（Dir Record）與 Inode 節點。這讓我們能從損壞的 APFS 容器中解析出完整的虛擬檔案系統（VFS）樹狀結構，還原出原始檔案與資料夾路徑。
+              </p>
+            </div>
+
+            <!-- Carver Tab -->
+            <div id="tab-carver" class="tab-pane">
+              <h3>智慧型 File Carving (特徵彫刻)與 OLE 支援</h3>
+              <p>
+                當檔案系統的分配表（如 FAT、MFT）遭受毀滅性破壞時，唯一的救援途徑就是 **File Carving** —— 循序掃描硬碟中的魔術位元組（Magic Bytes）。
+              </p>
+              <p>
+                除了支援 <code>PNG</code>、<code>JPEG</code>、<code>PDF</code>、<code>ZIP</code> 與具有嵌套 Box-Walking 長度走訪的 <code>MP4</code> 外，本引擎更進一步支援 **Microsoft Office 舊版 OLE/CFBF 複合二進制格式（如 <code>.doc</code>、<code>.xls</code>、<code>.ppt</code>）**。我們實作了 DIFAT 與 FAT 鏈結分配表解析，動態算出所有配置扇區（Sectors）的最後分佈位置，以精準雕刻出完整的 Office 文件。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <!-- Detailed Tutorial -->
+        <section id="tutorial" class="expert-only">
+          <h2>🛠️ 實戰教學：如何一步步使用 CLI 進行資料救援<span class="mode-tag mode-tag-expert">專家特調</span></h2>
+          <p>
+            現在，我們將透過實際操作，帶您在終端機中體驗這一套 Rust 資料救援引擎。
+          </p>
+
+          <h3>第一步：編譯與測試</h3>
+          <p>
+            首選，請確保您在專案根目錄下，執行以下指令以確保整個工作區編譯正確且測試通過：
+          </p>
+          <pre><code><span class="comment"># 測試全部 48 個測試案例</span>
+<span class="keyword">cargo</span> test
+
+<span class="comment"># 檢查代碼排版</span>
+<span class="keyword">cargo</span> fmt --check</code></pre>
+
+          <div class="callout callout-tip" style="margin: 20px 0; padding: 15px; border-left: 4px solid var(--accent-cyan); background: rgba(0, 242, 254, 0.05); border-radius: 4px;">
+            <div class="callout-title" style="font-weight: 700; color: var(--accent-cyan); margin-bottom: 8px;">💡 提示：更簡單的啟動方式（互動式選單嚮導）</div>
+            <p style="margin: 0; font-size: 14px; color: var(--text-primary);">
+              如果您不想記憶或輸入長長的命令列參數，可以直接執行以下指令啟動 <strong>中文互動式選單嚮導 (Interactive Wizard)</strong>，系統會以選單形式一步步引導您進行所有功能的執行與復原：
+            </p>
+            <pre style="margin-top: 8px; background: rgba(0, 0, 0, 0.3); padding: 8px 12px; border-radius: 4px;"><code style="font-family: var(--font-mono); color: var(--accent-cyan);"><span class="keyword">cargo</span> run -q -p polik-recovery-cli</code></pre>
+          </div>
+
+          <h3>第二步：列舉硬碟裝置</h3>
+          <p>
+            本引擎的 macOS 模組可以讀取磁碟配置。你可以使用 <code>devices</code> 指令列出受保護或外接的唯讀硬碟：
+          </p>
+          <pre><code><span class="keyword">cargo</span> run -q -p polik-recovery-cli -- devices</code></pre>
+
+          <h3>第三步：掃描 NTFS 並建立 VFS 樹狀結構</h3>
+          <p>
+            讓我們使用測試映像檔，將其中的檔案結構以 JSON 格式印出，這有助於後續 UI 端或計畫程式進行解析：
+          </p>
+          <pre><code><span class="keyword">cargo</span> run -q -p polik-recovery-cli -- ntfs-scan-vfs --file fixtures/images/ntfs_volume_with_mft.bin --count 2 --format json</code></pre>
+          <p>
+            執行後，您將會得到類似下方的結構，標明了每個檔案的 <code>id</code>（MFT record 序號）、路徑、類型以及分配狀態（例如 <code>Allocated</code> 或 <code>Deleted</code>）：
+          </p>
+          <pre><code>{
+  <span class="string">"source"</span>: <span class="string">"fixtures/images/ntfs_volume_with_mft.bin"</span>,
+  <span class="string">"volume_offset"</span>: <span class="number">0</span>,
+  <span class="string">"entries"</span>: [
+    {<span class="string">"id"</span>:<span class="number">0</span>,<span class="string">"path"</span>:<span class="string">"/$MFT"</span>,<span class="string">"kind"</span>:<span class="string">"File"</span>,<span class="string">"status"</span>:<span class="string">"Allocated"</span>,<span class="string">"size"</span>:<span class="number">16384</span>},
+    {<span class="string">"id"</span>:<span class="number">5</span>,<span class="string">"path"</span>:<span class="string">"/report.txt"</span>,<span class="string">"kind"</span>:<span class="string">"File"</span>,<span class="string">"status"</span>:<span class="string">"Deleted"</span>,<span class="string">"size"</span>:<span class="number">42</span>}
+  ]
+}</code></pre>
+
+          <h3>第四步：執行批次復原計畫 (Batch Recovery)</h3>
+          <p>
+            透過建立一個復原計畫的 JSON 檔（例如 <code>plan.json</code>），我們可以一次抽取多個選定項目，並將其安全寫入指定的目的地。
+          </p>
+          <div class="callout callout-tip">
+            <div class="callout-title">💡 提示：批次復原計畫格式</div>
+            在 <code>plan.json</code> 中指明來源映像與需要抽取的 <code>record_index</code> 及其輸出檔名即可。
+          </div>
+          <pre><code>{
+  <span class="string">"source"</span>: <span class="string">"fixtures/images/ntfs_volume_extract.bin"</span>,
+  <span class="string">"volume_offset"</span>: <span class="number">0</span>,
+  <span class="string">"items"</span>: [
+    { <span class="string">"record_index"</span>: <span class="number">0</span>, <span class="string">"output_filename"</span>: <span class="string">"recovered_data.txt"</span> }
+  ]
+}</code></pre>
+          <p>
+            接著，在 CLI 中執行此計畫：
+          </p>
+          <pre><code><span class="keyword">cargo</span> run -q -p polik-recovery-cli -- ntfs-extract-batch --plan plan.json --output-dir /tmp/recovered_output</code></pre>
+          <p>
+            執行完畢後，在 <code>/tmp/recovered_output</code> 目錄下，您會發現復原成功的檔案、單一檔案的雜湊證書，以及專門用來作鑑識與稽核的 <strong><code>recovery-session.manifest.txt</code></strong> 總結清單！
+          </p>
+        </section>
+
+        <!-- Carving Deep Dive -->
+        <section id="carving" class="expert-only">
+          <h2>🔍 File Carving 實際示範與 MP4 Box 走訪細節<span class="mode-tag mode-tag-expert">專家特調</span></h2>
+          <p>
+            當我們面臨一塊被完全格式化的隨身碟時，檔案系統資料已經蕩然無存，這時可以利用 <code>carve</code> 指令直接掃描特徵並重建檔案。
+          </p>
+          <pre><code><span class="keyword">cargo</span> run -q -p polik-recovery-cli -- carve --file &lt;raw_image.bin&gt; --output-dir /tmp/carved_files --format text</code></pre>
+          
+          <p>
+            在背後，以 <strong>MP4</strong> 檔案的彫刻為例，引擎不會傻傻地只去尋找 footer，因為許多 MP4 並沒有統一的結尾標記。相反地，[find_mp4_length](file:///Users/huangjianzhe/Desktop/資料救援/crates/file-carver/src/lib.rs#L218) 與 [find_ole_length](file:///Users/huangjianzhe/Desktop/資料救援/crates/file-carver/src/lib.rs#L289) 函數會分別走訪 MP4 Box 及 OLE FAT 分配扇區結構鏈：
+          </p>
+
+          <pre><code><span class="comment">// 簡化版 MP4 Box 走訪示意</span>
+<span class="keyword">fn</span> <span class="type">find_mp4_length</span>(source: &S, start_offset: <span class="type">u64</span>) -> Option&lt;<span class="type">u64</span>&gt; {
+    <span class="keyword">let</span> <span class="keyword">mut</span> offset = start_offset;
+    <span class="keyword">while</span> offset &lt; limit {
+        <span class="keyword">let</span> box_size = read_be_u32(source, offset)?;
+        <span class="keyword">let</span> box_type = read_box_type(source, offset + <span class="number">4</span>)?;
+        
+        <span class="comment">// 若遇到不合常理的 box_size 或包含非 ASCII 字元的 type，則停止</span>
+        <span class="keyword">if</span> !is_valid_type(box_type) { <span class="keyword">break</span>; }
+        
+        offset += box_size; <span class="comment">// 前進到下一個 Box</span>
+    }
+    Some(offset - start_offset)
+}</code></pre>
+          <p>
+            這種依循結構長度進行雕刻的方式，能夠確保在硬碟區段中，精準擷取出未受碎裂化（Fragmentation）影響的完整影片檔案！
+          </p>
+        </section>
+
+        <section>
+          <h2>🌟 總結</h2>
+          <p>
+            利用 Rust 開發的這套 <strong>Polik Recovery Engine</strong>，以無記憶體安全風險、零成本抽象的優勢，為資料救援提供了穩健的架構。無論是針對結構嚴密的 NTFS、適用於隨身碟的 exFAT、現代 Apple 設備的 APFS，或是最底層的 File Carving 特徵掃描，此核心引擎都展現了出色的穩定性與精準度。
+          </p>
+          <p>
+            歡迎您直接閱讀 [開發交接手冊 (handoff.md)](file:///Users/huangjianzhe/Desktop/資料救援/docs/handoff.md)，了解如何以此核心為基礎，串接您的 Flutter/Tauri 應用程式或進行後續功能擴展！
+          </p>
+        </section>
+
+        <!-- FAQ Section -->
+        <section id="faq" class="faq-section">
+          <h2>❓ 常見問答 (FAQ)</h2>
+          <div class="faq-grid">
+            <div class="faq-item novice-only">
+              <div class="faq-question">🙋‍♂️ 這套軟體真的完全免費嗎？ <span class="mode-tag mode-tag-novice">小白友善</span></div>
+              <div class="faq-answer">
+                是的！本專案是一個基於開源精神開發的資料救援核心引擎，不論是底層的 Rust 核心庫、命令列工具 (CLI)，還是打包好的 Tauri 桌面應用程式，皆完全開源且免費供大家使用。
+              </div>
+            </div>
+            
+            <div class="faq-item novice-only">
+              <div class="faq-question">🛡️ 軟體會弄壞我原本的隨身碟或磁碟嗎？ <span class="mode-tag mode-tag-novice">小白友善</span></div>
+              <div class="faq-answer">
+                絕對不會。本救援引擎在開口讀取任何裝置或映像檔時，均嚴格強制採用「唯讀模式 (Read-only)」。寫入功能只會在您指定儲存救回檔案的「新安全目錄」時才會運作，這保證了您原本受損的磁碟不會遭到任何二次覆寫損壞。
+              </div>
+            </div>
+
+            <div class="faq-item">
+              <div class="faq-question">🍎 支援哪些作業系統平台？</div>
+              <div class="faq-answer">
+                目前我們的主要開發與建置平台為 macOS (已經完成圖形界面編譯並封裝產出 .app 與 DMG 安裝檔)。Windows 原生底層磁碟讀取層已在後續開發藍圖 (Roadmap) 中，未來將會適配支援 Windows 的圖形版。
+              </div>
+            </div>
+
+            <div class="faq-item expert-only">
+              <div class="faq-question">💻 本引擎如何確保在底層讀取 raw 裝置時的唯讀安全性？ <span class="mode-tag mode-tag-expert">專家特調</span></div>
+              <div class="faq-answer">
+                在核心中，所有磁碟讀取操作都是通過 <code>BlockSource</code> 抽象特質（Trait）來進行的，該 API 只暴露了讀取（Read）方法，且在底層開啟 <code>/dev/rdiskN</code> 時強制使用唯讀模式的 Flag（例如 Rust 中的 <code>OpenOptions::new().read(true).write(false).open(...)</code>）。任何寫入動作在編譯與運行層面均被完全杜絕。
+              </div>
+            </div>
+
+            <div class="faq-item expert-only">
+              <div class="faq-question">🔍 File Carver 是如何克服 MP4 沒有固定結尾標記並防止虛假特徵的？ <span class="mode-tag mode-tag-expert">專家特調</span></div>
+              <div class="faq-answer">
+                我們的 File Carver 針對 MP4 實作了 <strong>Box-Walking (結構盒子走訪)</strong>。當掃描到 <code>ftyp</code> 表頭後，會讀取前 4 位元組長度與後 4 位元組 Box 類型（如 <code>moov</code>, <code>mdat</code>），然後跳轉到下一個 Box，並遞迴檢驗其合法性（是否為常見 ASCII 盒子類型）。只要偵測到非法 Box 或大小異常，就會中止長度計算，這相較於傳統粗暴的特徵碼搜尋，能提供接近 100% 的準確長度。
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </article>
+
+      <!-- Sidebar -->
+      <aside class="sidebar">
+        <div class="sidebar-card">
+          <div class="sidebar-title">目錄導覽</div>
+          <ul class="toc-list">
+            <li><a href="#intro">1. 救災核心天條與前言</a></li>
+            <li><a href="#novice-guide">2. 小白救援速成班</a></li>
+            <li><a href="#desktop-app">3. Tauri 桌面圖形介面</a></li>
+            <li><a href="#architecture">4. 四大核心引擎架構</a></li>
+            <li><a href="#tutorial">5. CLI 指令實戰教學</a></li>
+            <li><a href="#carving">6. File Carving 技術細節</a></li>
+            <li><a href="#faq">7. 常見問答 (FAQ)</a></li>
+          </ul>
+        </div>
+      </aside>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <p>&copy; 2026 Polik Recovery Engine Project. All Rights Reserved. Built with Rust.</p>
+    </div>
+  </footer>
+
+  <script>
+    function switchTab(event, tabId) {
+      // Get all tab panes and buttons
+      const panes = document.querySelectorAll('.tab-pane');
+      const buttons = document.querySelectorAll('.tab-btn');
+      
+      // Deactivate all
+      panes.forEach(pane => pane.classList.remove('active'));
+      buttons.forEach(btn => btn.classList.remove('active'));
+      
+      // Activate target
+      document.getElementById(tabId).classList.add('active');
+      event.currentTarget.classList.add('active');
+    }
+
+    // Mode Selector Logic
+    function changeMode(mode) {
+      // Set body class
+      document.body.className = '';
+      document.body.classList.add('mode-' + mode);
+      
+      // Set active buttons
+      document.querySelectorAll('.selector-btn').forEach(btn => btn.classList.remove('active'));
+      document.getElementById('btn-mode-' + mode).classList.add('active');
+      
+      // Save preference in localStorage
+      localStorage.setItem('polik-recovery-mode', mode);
+      
+      // Automatically adjust sidebar display if needed
+      const sidebar = document.querySelector('.sidebar');
+      if (sidebar) {
+        if (mode === 'novice') {
+          sidebar.style.display = 'none';
+        } else {
+          sidebar.style.display = 'block';
+        }
+      }
+    }
+
+    // Mockup Data and Interaction
+    const mockupData = {
+      mft: {
+        name: '/$MFT',
+        status: '已分配 (Allocated)',
+        statusColor: '#00FF87',
+        size: '16.0 KB',
+        hash: '系統中繼檔 (不建議復原)',
+        btnColor: '#6B7280',
+        btnText: '🔒 系統保護檔案'
+      },
+      report: {
+        name: 'report.txt',
+        status: '已刪除 (Deleted)',
+        statusColor: '#FF416C',
+        size: '42 位元組',
+        hash: 'SHA-256 合規',
+        btnColor: '#10B981',
+        btnText: '💾 執行真實復原'
+      },
+      doc: {
+        name: 'document_old.doc',
+        status: '已刪除 (Deleted)',
+        statusColor: '#FF416C',
+        size: '15.5 KB',
+        hash: 'SHA-256 合規',
+        btnColor: '#10B981',
+        btnText: '💾 執行真實復原'
+      }
+    };
+
+    function clickMockupItem(key) {
+      // Update active class on items
+      document.querySelectorAll('.mockup-vfs-item').forEach(item => {
+        item.classList.remove('active');
+        const rect = item.querySelector('rect');
+        rect.setAttribute('fill', 'transparent');
+        rect.removeAttribute('stroke');
+      });
+      
+      const activeItem = document.getElementById('mockup-item-' + key);
+      activeItem.classList.add('active');
+      const activeRect = activeItem.querySelector('rect');
+      activeRect.setAttribute('fill', 'rgba(0, 242, 254, 0.1)');
+      activeRect.setAttribute('stroke', 'rgba(0, 242, 254, 0.2)');
+      
+      // Update Details UI
+      const data = mockupData[key];
+      document.getElementById('mockup-det-name').textContent = data.name;
+      
+      const statusEl = document.getElementById('mockup-det-status');
+      statusEl.textContent = data.status;
+      statusEl.setAttribute('fill', data.statusColor);
+      
+      document.getElementById('mockup-det-size').textContent = data.size;
+      document.getElementById('mockup-det-hash').textContent = data.hash;
+      
+      // Recovery Button
+      const btn = document.getElementById('mockup-btn-rect');
+      btn.setAttribute('fill', data.btnColor);
+      document.getElementById('mockup-btn-text').textContent = data.btnText;
+    }
+
+    // Simulator Logic
+    function updateLog(msg) {
+      const terminal = document.getElementById('sim-terminal-log');
+      terminal.innerHTML = `<span class="terminal-prompt">></span> ${msg}`;
+    }
+
+    function simDelete() {
+      // Update Catalog Card UI
+      const card = document.getElementById('card-report');
+      card.style.opacity = '0.7';
+      card.querySelector('.card-filename').style.textDecoration = 'line-through';
+      
+      const badge = document.getElementById('badge-report');
+      badge.className = 'card-status-badge status-deleted';
+      badge.innerText = '已刪除 (Deleted)';
+      
+      // Highlight sector 2 to show data is STILL there
+      const sector = document.getElementById('sector-2');
+      sector.style.boxShadow = '0 0 15px rgba(0, 255, 135, 0.4)';
+      sector.style.borderColor = 'var(--accent-green)';
+      
+      updateLog('模擬刪除成功！您會發現：編目目錄卡已標記為「已刪除」，但是下方實體磁碟 Sector 2 上的檔案內容仍完好無損！現在可以點擊「步驟二」進行安全救援。');
+      
+      // Enable next step, disable first step
+      document.getElementById('btn-sim-delete').disabled = true;
+      document.getElementById('btn-sim-recover').disabled = false;
+    }
+
+    function simRecover() {
+      updateLog('🔍 啟動唯讀救援引擎... 掃描實體磁碟 Sector 2... 偵測到常駐資料數據！');
+      
+      setTimeout(() => {
+        // Show recovered UI
+        const card = document.getElementById('card-report');
+        card.style.opacity = '1';
+        card.style.borderColor = 'var(--accent-cyan)';
+        card.style.boxShadow = '0 0 15px rgba(0, 242, 254, 0.3)';
+        card.querySelector('.card-filename').style.textDecoration = 'none';
+        
+        const badge = document.getElementById('badge-report');
+        badge.className = 'card-status-badge status-allocated';
+        badge.innerText = '已救援 (Recovered)';
+        
+        updateLog('🎉 恭喜！資料救援成功！本引擎在「唯讀」模式下成功提取 Sector 2 內容並將其安全複製到新目錄中。接下來，您可以點擊「步驟三」體驗如果這時候「寫入新資料」會發生什麼事。');
+        document.getElementById('btn-sim-recover').disabled = true;
+        document.getElementById('btn-sim-overwrite').disabled = false;
+      }, 1000);
+    }
+
+    function simOverwrite() {
+      // Overwrite Sector 2 with new data
+      const sectorContent = document.getElementById('content-sector-2');
+      sectorContent.innerText = '"新檔案內容：覆寫了舊資料。"';
+      
+      const sector = document.getElementById('sector-2');
+      sector.className = 'disk-sector';
+      sector.style.background = 'rgba(255, 65, 108, 0.1)';
+      sector.style.borderColor = 'var(--accent-pink)';
+      sector.style.boxShadow = '0 0 15px rgba(255, 65, 108, 0.4)';
+      
+      // Update catalog card to show it's gone
+      const card = document.getElementById('card-report');
+      card.style.opacity = '0.5';
+      card.style.borderColor = 'var(--border-color)';
+      card.style.boxShadow = 'none';
+      
+      const badge = document.getElementById('badge-report');
+      badge.className = 'card-status-badge status-deleted';
+      badge.innerText = '已覆寫 (Overwritten)';
+      
+      updateLog('⚠️ 警告：您在受損磁區上寫入了新檔案！此時，新資料將實體磁碟 Sector 2 的舊內容覆蓋。舊資料已被徹底消滅，再也無法挽救！這就是為什麼資料救援的第一天條是「嚴禁寫入」！');
+      document.getElementById('btn-sim-overwrite').disabled = true;
+    }
+
+    function simReset() {
+      // Reset card
+      const card = document.getElementById('card-report');
+      card.style.opacity = '1';
+      card.style.borderColor = 'var(--border-color)';
+      card.style.boxShadow = 'none';
+      card.querySelector('.card-filename').style.textDecoration = 'none';
+      
+      const badge = document.getElementById('badge-report');
+      badge.className = 'card-status-badge status-allocated';
+      badge.innerText = '已分配 (Allocated)';
+      
+      // Reset sector
+      const sector = document.getElementById('sector-2');
+      sector.className = 'disk-sector sector-occupied';
+      sector.style.background = 'rgba(0, 255, 135, 0.02)';
+      sector.style.borderColor = 'rgba(0, 255, 135, 0.2)';
+      sector.style.boxShadow = 'none';
+      
+      const sectorContent = document.getElementById('content-sector-2');
+      sectorContent.innerText = '"報告內容: Rust 救援引擎完成測試。"';
+      
+      // Reset buttons
+      document.getElementById('btn-sim-delete').disabled = false;
+      document.getElementById('btn-sim-recover').disabled = true;
+      document.getElementById('btn-sim-overwrite').disabled = true;
+      
+      updateLog('系統重置完畢。請點擊「步驟一」按鈕開始模擬檔案刪除。');
+    }
+
+    // Initialize default or saved mode
+    document.addEventListener('DOMContentLoaded', () => {
+      const savedMode = localStorage.getItem('polik-recovery-mode') || 'all';
+      changeMode(savedMode);
+    });
+  </script>
+</body>
+</html>
