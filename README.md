@@ -27,7 +27,7 @@
 ## 📦 安裝檔下載與使用說明
 
 您可以直接在此處點擊下載最新的安裝檔：
-*   🍏 **macOS 版下載**：[polik-recovery-desktop_0.1.0_aarch64.dmg](http://polik18.github.io/polik-recovery/polik-recovery-desktop_0.1.0_aarch64.dmg) (適合 Apple Silicon M1/M2/M3 等晶片)
+*   🍏 **macOS 版下載**：[polik-recovery-desktop_0.1.0_aarch64.dmg](https://polik18.github.io/polik-recovery/polik-recovery-desktop_0.1.0_aarch64.dmg) (適合 Apple Silicon M1/M2/M3 等晶片)
 *   💻 **Windows 版與 Intel macOS 版**：請至 [Releases](https://github.com/polik18/polik-recovery/releases) 頁面下載對應的安裝包。
 
 ### 🍏 macOS 使用說明
