@@ -1,27 +1,55 @@
-# Polik Recovery
+# 📂 Polik Recovery (波立克資料救援工具)
 
-Polik Recovery 是一套以 Rust 開發的唯讀資料救援工具，提供 macOS 桌面版安裝檔與中文教學頁面。
+歡迎使用 **Polik Recovery (波立克資料救援工具)**。本工具是一款專為個人與專業使用者設計的**唯讀安全型資料救援軟體**，支援 macOS 與 Windows 系統，能安全、高效地幫您尋回因誤刪除、格式化或硬碟毀損而遺失的檔案。
 
-## 下載
+為了確保您的資料安全，本軟體在掃描與救援過程中採用**完全唯讀**的運作機制，絕不寫入或修改您的來源磁碟，從根本上避免了二次覆蓋資料的風險。
 
-- macOS Apple Silicon: http://polik18.github.io/polik-recovery/polik-recovery-desktop_0.1.0_aarch64.dmg
-- 使用教學: `index.html`
+---
 
-Windows 版安裝檔尚待在 Windows 電腦本地編譯後加入此發佈目錄。
+## 🚀 核心功能特色
 
-## macOS 使用方式
+*   **多檔案系統原生解析**：
+    *   **NTFS**：完整解析 MFT 記錄，支援壓縮檔還原、**備用資料流（Alternate Data Streams, ADS）** 提取，以及**壞軌部分還原（Partial Recovery）**。遇到壞軌時會以零填補，儘可能救回剩餘部分的資料。
+    *   **exFAT**：支援引導磁區解析、FAT 鏈結追蹤，能快速掃描並救回被刪除的檔案與目錄結構。
+    *   **APFS (macOS)**：深度解析 APFS 卷超級區塊、B-Tree 與 Extent 實體資料塊，支援完整的虛擬檔案樹列出與提取。
+*   **強大的 Raw Carver（深度特徵彫刻）**：
+    *   即使檔案系統結構已嚴重毀損，軟體也能直接掃描磁碟底層扇區，利用檔案特徵碼（Magic Signatures）救回檔案。
+    *   支援格式：`PNG`、`JPEG`、`PDF`、`ZIP`、`MP4` 與舊版 Office 格式 (`OLE` 等)。
+    *   內建 SHA-256 去重與置信度計算，避免重複提取相同檔案。
+*   **虛擬檔案樹（VFS）**：
+    *   自動重構孤兒節點路徑，並以直觀的目錄樹狀結構呈現，方便您勾選並批次還原所選檔案。
+*   **安全寫入與完整稽核**：
+    *   強制禁止將復原的檔案寫回被救援的來源磁碟，保護原始數據。
+    *   批次救援結束後，自動生成雜湊（SHA-256）稽核清單，供您確認資料完整性。
 
-1. 下載並開啟 http://polik18.github.io/polik-recovery/polik-recovery-desktop_0.1.0_aarch64.dmg。
-2. 將 Polik Recovery 拖曳到 Applications。
-3. 啟動應用程式後，選擇要掃描的來源磁碟或映像檔。
-4. 請將救援輸出位置選在不同磁碟或外接儲存裝置，避免覆寫來源資料。
+---
 
-## 安全原則
+## 📦 安裝檔下載與使用說明
 
-- 掃描與讀取來源磁碟時採唯讀模式。
-- 救援輸出會產生 SHA-256 稽核資訊。
-- macOS Raw Disk 存取需要系統權限；若直接讀取被拒，應用程式可透過本機 helper 進行受限唯讀讀取。
+您可以直接在此處點擊下載最新的安裝檔：
+*   🍏 **macOS 版下載**：[polik-recovery-desktop_0.1.0_aarch64.dmg](http://polik18.github.io/polik-recovery/polik-recovery-desktop_0.1.0_aarch64.dmg) (適合 Apple Silicon M1/M2/M3 等晶片)
+*   💻 **Windows 版與 Intel macOS 版**：請至 [Releases](https://github.com/polik18/polik-recovery/releases) 頁面下載對應的安裝包。
 
-## 發佈內容
+### 🍏 macOS 使用說明
+1.  點擊下載上述 `.dmg` 檔案，或從 [Releases](https://github.com/polik18/polik-recovery/releases) 下載最新的版本。
+2.  雙擊打開 `.dmg`，將 `polik-recovery-desktop` 拖移至您的**應用程式 (Applications)** 資料夾。
+3.  由於資料救援軟體需要讀取底層實體硬碟（唯讀權限），請依照程式指引提供必要的系統權限。
+    *   *註：本程式已內建特權輔助背景服務 `polik-recovery-helper`，UI 程式本身不需要 root 權限即可安全執行救援工作。*
 
-此目錄只放公開發佈用檔案，不包含 Rust 原始碼、內部文件或開發設定。
+### 💻 Windows 使用說明
+1.  在 [Releases](https://github.com/polik18/polik-recovery/releases) 下載最新的安裝包（`.msi` 或 `.exe` 檔案）。
+2.  雙擊執行安裝程式，並依照安裝精靈引導完成安裝。
+3.  以**系統管理員身份**執行應用程式，以便讀取實體硬碟扇區。
+
+---
+
+## 💡 使用步驟指引
+1.  **選擇磁碟**：啟動應用程式後，系統會自動列出您電腦上連接的所有磁碟與分割區。
+2.  **開始掃描**：選擇您要救援的磁碟，點擊「開始掃描」。程式會分析檔案系統結構並重構出虛擬檔案目錄樹。
+3.  **瀏覽與勾選**：在左側的目錄樹中瀏覽被刪除或遺失的檔案（若檔案包含備用資料流 ADS，會以 `檔案名稱:流名稱` 格式呈現），勾選您想要救回的項目。
+4.  **安全導出**：選擇一個**非來源磁碟**的儲存路徑（例如另一個外接隨身碟或外接硬碟），點擊「開始復原」。程式會自動導出檔案並在目錄下生成校驗清單。
+
+---
+
+## 🛡️ 安全承諾
+本軟體為**完全本地端運作**的資料救援工具，不會將您的任何磁碟資訊、掃描結果或救援檔案上傳至任何伺服器，您的隱私與數據安全是我們的首要考量。
