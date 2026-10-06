@@ -1,0 +1,128 @@
+{
+  "version": "v0.7",
+  "createdAt": "2000-01-01T00:00:00+00:00",
+  "description": "Filesystem-level quality fixtures for NTFS/exFAT/FAT32 metadata recovery paths.",
+  "fixtures": [
+    {
+      "fs": "ntfs",
+      "image": "fixtures/images/ntfs_volume_with_mft.bin",
+      "scanCommand": [
+        "ntfs-scan-vfs",
+        "--file",
+        "fixtures/images/ntfs_volume_with_mft.bin",
+        "--count",
+        "2",
+        "--format",
+        "json"
+      ],
+      "expectedEntries": [
+        {
+          "path": "/root/report.txt",
+          "status": "Deleted",
+          "kind": "File",
+          "size": 1234
+        }
+      ],
+      "extracts": [
+        {
+          "name": "report.txt",
+          "image": "fixtures/images/ntfs_volume_extract.bin",
+          "record": 0,
+          "expectedSha256": "a2ac8f445971c0ffa9deda2237db94ccb62058c75de0f7494f6cbcf76a32231c",
+          "expectedBytes": 20,
+          "status": "Complete"
+        }
+      ]
+    },
+    {
+      "fs": "fat32",
+      "image": "fixtures/fs_quality/fat32_image.bin",
+      "scanCommand": [
+        "fat32-scan-vfs",
+        "--file",
+        "fixtures/fs_quality/fat32_image.bin",
+        "--format",
+        "json"
+      ],
+      "extracts": [
+        {
+          "name": "ACTIVE.TXT",
+          "entryId": 1024,
+          "expectedSha256": "70106175ebc25bea1b11b5d0579121dfb7d108c39151e365da662641660e2d61",
+          "expectedBytes": 29,
+          "status": "Allocated"
+        },
+        {
+          "name": "_ELETE.TXT",
+          "entryId": 1056,
+          "expectedSha256": "9c665145653d9e9865c44548f18e96f0fa9d1b7282a6d32204ab58919f01d01d",
+          "expectedBytes": 47,
+          "status": "Deleted",
+          "recoveryMode": "deleted-contiguous-fallback"
+        }
+      ],
+      "expectedEntries": [
+        {
+          "path": "/ACTIVE.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 29
+        },
+        {
+          "path": "/_ELETE.TXT",
+          "status": "Deleted",
+          "kind": "File",
+          "size": 47
+        }
+      ]
+    },
+    {
+      "fs": "exfat",
+      "image": "fixtures/fs_quality/exfat_image.bin",
+      "scanCommand": [
+        "exfat-scan-vfs",
+        "--file",
+        "fixtures/fs_quality/exfat_image.bin",
+        "--format",
+        "json"
+      ],
+      "extracts": [
+        {
+          "name": "ACTIVE.TXT",
+          "entryId": 1024,
+          "expectedSha256": "2d102d3aebcc97bb35c827db5b2c9e5187347ee0b733b52c29bf8aa4206e8d54",
+          "expectedBytes": 40,
+          "status": "Allocated"
+        },
+        {
+          "name": "DELETE.TXT",
+          "entryId": 1120,
+          "expectedSha256": "a274bacae979381053812cba2d240685d05af3834ffc057aa9190520401cca58",
+          "expectedBytes": 41,
+          "status": "Deleted",
+          "recoveryMode": "no-fat-chain-contiguous"
+        }
+      ],
+      "expectedEntries": [
+        {
+          "path": "/ACTIVE.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 40
+        },
+        {
+          "path": "/DELETE.TXT",
+          "status": "Deleted",
+          "kind": "File",
+          "size": 41
+        }
+      ]
+    }
+  ],
+  "thresholds": {
+    "minimumScanEntryMatchRatio": 1.0,
+    "minimumExtractHashMatchRatio": 1.0,
+    "maximumScanFailures": 0,
+    "maximumExtractFailures": 0
+  }
+}

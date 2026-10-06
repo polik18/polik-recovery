@@ -1,0 +1,16 @@
+[package]
+name = "data_recovery_scan_report"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+data_recovery_core = { path = "../core" }
+data_recovery_fs_ntfs = { path = "../fs-ntfs" }
+data_recovery_vfs = { path = "../vfs" }

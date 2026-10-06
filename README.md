@@ -1,55 +1,56 @@
-# 📂 Polik Recovery (波立克資料救援工具)
+# Polik Recovery
 
-歡迎使用 **Polik Recovery (波立克資料救援工具)**。本工具是一款專為個人與專業使用者設計的**唯讀安全型資料救援軟體**，支援 macOS 與 Windows 系統，能安全、高效地幫您尋回因誤刪除、格式化或硬碟毀損而遺失的檔案。
+Polik Recovery 是資料復原引擎與桌面介面的研究專案。目前公開倉庫處於**研究預覽階段**，不是可用於唯一副本、重要資料或正式鑑識工作的穩定版本。
 
-為了確保您的資料安全，本軟體在掃描與救援過程中採用**完全唯讀**的運作機制，絕不寫入或修改您的來源磁碟，從根本上避免了二次覆蓋資料的風險。
+## 目前公開狀態
 
----
+| 項目 | 狀態 |
+|---|---|
+| 公開原始碼 | 已匯入 [`product/`](product/) 並採 MIT；乾淨環境重建驗證進行中 |
+| macOS artifact | 歷史研究預覽，僅 Apple Silicon、未有效簽署、未 notarize |
+| Intel macOS | 尚未提供 |
+| Windows | 尚未提供 |
+| privileged helper | 公開 DMG 中沒有 README 過去所稱的 helper |
+| 檔案系統能力 | 尚待可重現 corpus 與 release gate 驗證 |
 
-## 🚀 核心功能特色
+目前不提供建議下載入口。倉庫中的 `polik-recovery-desktop_0.1.0_aarch64.dmg` 只保留作為歷史稽核 artifact，不應用於唯一一份或高價值資料。
 
-*   **多檔案系統原生解析**：
-    *   **NTFS**：完整解析 MFT 記錄，支援壓縮檔還原、**備用資料流（Alternate Data Streams, ADS）** 提取，以及**壞軌部分還原（Partial Recovery）**。遇到壞軌時會以零填補，儘可能救回剩餘部分的資料。
-    *   **exFAT**：支援引導磁區解析、FAT 鏈結追蹤，能快速掃描並救回被刪除的檔案與目錄結構。
-    *   **APFS (macOS)**：深度解析 APFS 卷超級區塊、B-Tree 與 Extent 實體資料塊，支援完整的虛擬檔案樹列出與提取。
-*   **強大的 Raw Carver（深度特徵彫刻）**：
-    *   即使檔案系統結構已嚴重毀損，軟體也能直接掃描磁碟底層扇區，利用檔案特徵碼（Magic Signatures）救回檔案。
-    *   支援格式：`PNG`、`JPEG`、`PDF`、`ZIP`、`MP4` 與舊版 Office 格式 (`OLE` 等)。
-    *   內建 SHA-256 去重與置信度計算，避免重複提取相同檔案。
-*   **虛擬檔案樹（VFS）**：
-    *   自動重構孤兒節點路徑，並以直觀的目錄樹狀結構呈現，方便您勾選並批次還原所選檔案。
-*   **安全寫入與完整稽核**：
-    *   強制禁止將復原的檔案寫回被救援的來源磁碟，保護原始數據。
-    *   批次救援結束後，自動生成雜湊（SHA-256）稽核清單，供您確認資料完整性。
+- 檔名：`polik-recovery-desktop_0.1.0_aarch64.dmg`
+- SHA-256：`897967c1a83071a16e6086ff58ca111c22091430b6c904cd479206540169af30`
+- Checksum 只用來核對下載 bytes，不能證明程式安全或復原結果正確。
 
----
+完整證據與限制請見：
 
-## 📦 安裝檔下載與使用說明
+- [目前發布稽核](docs/audit/current-release-inventory.md)
+- [能力矩陣](docs/capability-matrix.md)
+- [安全政策](SECURITY.md)
+- [階段性改善計畫](POLIK_RECOVERY_STAGED_IMPROVEMENT_PLAN.md)
+- [目前實施進度](docs/implementation-status.md)
 
-您可以直接在此處點擊下載最新的安裝檔：
-*   🍏 **macOS 版下載**：[polik-recovery-desktop_0.1.0_aarch64.dmg](https://polik18.github.io/polik-recovery/polik-recovery-desktop_0.1.0_aarch64.dmg) (適合 Apple Silicon M1/M2/M3 等晶片)
-*   💻 **Windows 版與 Intel macOS 版**：請至 [Releases](https://github.com/polik18/polik-recovery/releases) 頁面下載對應的安裝包。
+## 安全提醒
 
-### 🍏 macOS 使用說明
-1.  點擊下載上述 `.dmg` 檔案，或從 [Releases](https://github.com/polik18/polik-recovery/releases) 下載最新的版本。
-2.  雙擊打開 `.dmg`，將 `polik-recovery-desktop` 拖移至您的**應用程式 (Applications)** 資料夾。
-3.  由於資料救援軟體需要讀取底層實體硬碟（唯讀權限），請依照程式指引提供必要的系統權限。
-    *   *註：本程式已內建特權輔助背景服務 `polik-recovery-helper`，UI 程式本身不需要 root 權限即可安全執行救援工作。*
+- 不要在唯一一份原始資料上測試本預覽版。
+- 發生異音、頻繁斷線或大量 I/O error 時應停止直接掃描，優先使用具 mapfile 的工具製作映像，或尋求專業資料復原服務。
+- 復原輸出必須放在不同的實體儲存裝置；不同資料夾或不同 APFS volume 不一定代表不同實體磁碟。
+- SHA-256 可證明某一份輸出 bytes 未改變，不能證明它與遺失前的原檔完全相同。
+- 加密、壓縮、稀疏、碎片化、已刪除及損壞檔案都需要各自的測試證據，不能由「辨識出檔名」推論為可完整復原。
 
-### 💻 Windows 使用說明
-1.  在 [Releases](https://github.com/polik18/polik-recovery/releases) 下載最新的安裝包（`.msi` 或 `.exe` 檔案）。
-2.  雙擊執行安裝程式，並依照安裝精靈引導完成安裝。
-3.  以**系統管理員身份**執行應用程式，以便讀取實體硬碟扇區。
+## 能力說明
 
----
+開發快照包含 NTFS、exFAT、FAT32、APFS、File Carving、VFS 與輸出 manifest 等實作，但目前公開 artifact 尚未通過版本一致的完整驗證。各能力以 [能力矩陣](docs/capability-matrix.md) 為唯一公開依據；沒有測試證據的項目維持 `experimental`、`planned` 或 `unsupported`。
 
-## 💡 使用步驟指引
-1.  **選擇磁碟**：啟動應用程式後，系統會自動列出您電腦上連接的所有磁碟與分割區。
-2.  **開始掃描**：選擇您要救援的磁碟，點擊「開始掃描」。程式會分析檔案系統結構並重構出虛擬檔案目錄樹。
-3.  **瀏覽與勾選**：在左側的目錄樹中瀏覽被刪除或遺失的檔案（若檔案包含備用資料流 ADS，會以 `檔案名稱:流名稱` 格式呈現），勾選您想要救回的項目。
-4.  **安全導出**：選擇一個**非來源磁碟**的儲存路徑（例如另一個外接隨身碟或外接硬碟），點擊「開始復原」。程式會自動導出檔案並在目錄下生成校驗清單。
+## 原始碼與授權
 
----
+專案 owner 已在 [ADR-0001](docs/decisions/0001-source-availability.md) 選擇真正開源。canonical Rust／Tauri workspace 位於 [`product/`](product/)，並依 [MIT License](LICENSE) 發布。
 
-## 🛡️ 安全承諾
-本軟體為**完全本地端運作**的資料救援工具，不會將您的任何磁碟資訊、掃描結果或救援檔案上傳至任何伺服器，您的隱私與數據安全是我們的首要考量。
+來源公開不代表目前版本已可安全處理真實磁碟。舊 delivery snapshot 的危險 privileged prototype 已從 canonical source 移除，但正式 helper 尚未重新實作，輸出隔離也尚未完成全 caller 遷移；正式 artifact 必須由這份 canonical source 在 CI 重建，並通過安全、正確性、簽署與 notarization gate。
+
+## 隱私
+
+目前沒有足夠的 release evidence 可對桌面 App 做絕對的「完全離線」承諾。正式版需要以網路行為測試與權限設定驗證。
+
+行銷網站與桌面 App 是不同範圍：目前網站會載入 Google Fonts 與站點統計腳本，瀏覽頁面時可能向第三方／站點服務送出一般 HTTP 請求；這不代表磁碟內容會被上傳。
+
+## 開發狀態
+
+目前優先工作是修正公開宣稱、建立權威原始碼、重建 privileged boundary、證明來源／輸出位於不同實體裝置，以及建立可重現的檔案系統 corpus。正式下載會等安全、正確性、簽署與發布 gate 全部通過後再恢復。

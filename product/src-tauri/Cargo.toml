@@ -1,0 +1,44 @@
+[package]
+name = "polik-recovery-desktop"
+version.workspace = true
+description = "Experimental Polik Recovery desktop application"
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.6.2", features = [] }
+
+[dependencies]
+serde_json = "1.0"
+serde = { version = "1.0", features = ["derive"] }
+log = "0.4"
+image = { version = "0.25", default-features = false, features = ["jpeg", "png"] }
+base64 = "0.22"
+tauri = { version = "2.11.2", features = [] }
+tauri-plugin-log = "2"
+tauri-plugin-dialog = "2"
+
+data_recovery_core = { path = "../crates/core" }
+data_recovery_fs_ntfs = { path = "../crates/fs-ntfs" }
+data_recovery_fs_exfat = { path = "../crates/fs-exfat" }
+data_recovery_fs_fat32 = { path = "../crates/fs-fat32" }
+data_recovery_fs_apfs = { path = "../crates/fs-apfs" }
+data_recovery_recovery_plan = { path = "../crates/recovery-plan" }
+data_recovery_safe_writer = { path = "../crates/safe-writer" }
+data_recovery_scan_report = { path = "../crates/scan-report" }
+data_recovery_vfs = { path = "../crates/vfs" }
+data_recovery_file_carver = { path = "../crates/file-carver" }
+data_recovery_device_macos = { path = "../crates/device-macos" }
+data_recovery_device_windows = { path = "../crates/device-windows" }
+
+[dev-dependencies]
+tokio = { version = "1.0", features = ["rt", "macros", "rt-multi-thread"] }

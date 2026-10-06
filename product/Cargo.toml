@@ -1,0 +1,27 @@
+[workspace]
+members = [
+    "crates/core",
+    "crates/device-macos",
+    "crates/device-windows",
+    "crates/fs-ntfs",
+    "crates/fs-exfat",
+    "crates/fs-fat32",
+    "crates/fs-apfs",
+    "crates/file-carver",
+    "crates/safe-writer",
+    "crates/scan-report",
+    "crates/vfs",
+    "crates/recovery-plan",
+    "crates/cli",
+    "src-tauri",
+]
+resolver = "3"
+
+[workspace.package]
+version = "0.2.0-alpha.1"
+edition = "2024"
+license = "MIT"
+rust-version = "1.85"
+authors = ["Polik Recovery contributors"]
+repository = "https://github.com/polik18/polik-recovery"
+homepage = "https://polik18.github.io/polik-recovery/"

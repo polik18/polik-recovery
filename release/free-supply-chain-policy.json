@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "cost_policy": "free-only",
+  "allowed_services": [
+    "GitHub Actions for a public repository",
+    "GitHub artifact attestations for a public repository",
+    "SignPath Foundation free code signing for accepted open-source projects"
+  ],
+  "pinned_dependency_auditor": "cargo-deny 0.20.2 via cargo-deny-action 2.1.1",
+  "forbidden_license_markers": [
+    "AGPL-",
+    "GPL-3.0-only",
+    "SSPL-",
+    "BUSL-",
+    "Commons-Clause",
+    "LicenseRef-"
+  ],
+  "required_release_files": [
+    "SHA256SUMS",
+    "sbom.cdx.json",
+    "provenance.intoto.jsonl",
+    "build-metadata.json",
+    "license-screen.json",
+    "signing-status.json",
+    "capability-matrix.md"
+  ],
+  "public_release_requirements": {
+    "clean_committed_source": true,
+    "trusted_signature_or_keyless_attestation": true,
+    "platform_gate_passed": true,
+    "unsigned_macos_distribution": false,
+    "unsigned_windows_distribution": false
+  }
+}

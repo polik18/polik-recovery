@@ -1,0 +1,34 @@
+{
+  "schema_version": 1,
+  "project": "polik-recovery",
+  "channel": "research-preview",
+  "public_release_enabled": false,
+  "audited_at": "2026-10-02",
+  "repository_commit": "42458a4c9782b3920426a7c98a2447e9dfdc0c47",
+  "artifacts": [
+    {
+      "filename": "polik-recovery-desktop_0.1.0_aarch64.dmg",
+      "version": "0.1.0",
+      "platform": "macos",
+      "architecture": "aarch64",
+      "bytes": 3647430,
+      "sha256": "897967c1a83071a16e6086ff58ca111c22091430b6c904cd479206540169af30",
+      "download_recommended": false,
+      "developer_id_signed": false,
+      "notarized": false,
+      "known_limitations": [
+        "Historical artifact predates and cannot be reproduced from the newly imported canonical source",
+        "Strict code-signature verification fails",
+        "No bundled privileged helper",
+        "File-system recovery claims are not backed by artifact-matched public corpus evidence"
+      ]
+    }
+  ],
+  "release_blockers": [
+    "canonical-source-clean-build-verification",
+    "privileged-boundary-redesign",
+    "physical-source-output-isolation",
+    "filesystem-corpus-gates",
+    "signing-and-notarization"
+  ]
+}

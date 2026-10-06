@@ -1,0 +1,34 @@
+name: Public content safety
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: public-content-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Validate public claims
+        run: ./scripts/check-public-content.sh
+
+      - name: Validate HTML, links and release manifest
+        run: python3 scripts/validate-public-files.py
+
+      - name: Validate JavaScript syntax
+        run: node --check assets/site.js
+
+      - name: Validate shell syntax
+        run: sh -n scripts/check-public-content.sh

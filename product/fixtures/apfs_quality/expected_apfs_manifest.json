@@ -1,0 +1,93 @@
+{
+  "version": "v1.3",
+  "generatedAt": "2000-01-01T00:00:00+00:00",
+  "description": "APFS synthetic fixtures for complete, partial, and crypto-metadata extraction quality checks.",
+  "fixtures": [
+    {
+      "fs": "apfs",
+      "image": "fixtures/apfs_quality/apfs_complete_partial.bin",
+      "scanCommand": [
+        "apfs-scan-vfs",
+        "--file",
+        "fixtures/apfs_quality/apfs_complete_partial.bin",
+        "--format",
+        "json"
+      ],
+      "extracts": [
+        {
+          "name": "COMPLETE.TXT",
+          "inode": 202,
+          "expectedSha256": "108c2b35cc243842175c5ed0905adda638652f6590a9d39de2a840aaa2439904",
+          "expectedBytes": 34,
+          "expectedQuality": "complete",
+          "expectedBytesLost": 0,
+          "expectedEncryptedHint": false
+        },
+        {
+          "name": "PARTIAL.BIN",
+          "inode": 303,
+          "expectedSha256": "d2f561ddb299dc1755a6309b887e1309e2bdc56080209e3017956deb4d2802bb",
+          "expectedBytes": 38,
+          "expectedQuality": "suspect_partial",
+          "expectedBytesLost": 16,
+          "expectedEncryptedHint": false
+        }
+      ],
+      "expectedEntries": [
+        {
+          "path": "/COMPLETE.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 34
+        },
+        {
+          "path": "/PARTIAL.BIN",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 38
+        }
+      ],
+      "encryptedFixture": false
+    },
+    {
+      "fs": "apfs",
+      "image": "fixtures/apfs_quality/apfs_encrypted_hint.bin",
+      "scanCommand": [
+        "apfs-scan-vfs",
+        "--file",
+        "fixtures/apfs_quality/apfs_encrypted_hint.bin",
+        "--format",
+        "json"
+      ],
+      "extracts": [
+        {
+          "name": "ENCRYPTED.TXT",
+          "inode": 404,
+          "expectedSha256": "6330147c000cfbce8fdde439a43b2f2af64948b31ab9b5ed5a0647282d671372",
+          "expectedBytes": 33,
+          "expectedQuality": "suspect_partial",
+          "expectedBytesLost": 0,
+          "expectedEncryptedHint": true
+        }
+      ],
+      "expectedEntries": [
+        {
+          "path": "/ENCRYPTED.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 33
+        }
+      ],
+      "encryptedFixture": true
+    }
+  ],
+  "thresholds": {
+    "minimumScanEntryMatchRatio": 1.0,
+    "minimumExtractHashMatchRatio": 1.0,
+    "maximumScanFailures": 0,
+    "maximumExtractFailures": 0,
+    "maximumQualityMismatches": 0,
+    "maximumBytesLostMismatches": 0,
+    "maximumEncryptedHintMismatches": 0
+  }
+}

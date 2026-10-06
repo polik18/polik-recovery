@@ -1,0 +1,30 @@
+[package]
+name = "polik-recovery-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "polik-recovery"
+path = "src/main.rs"
+
+[dependencies]
+data_recovery_core = { path = "../core" }
+data_recovery_fs_ntfs = { path = "../fs-ntfs" }
+data_recovery_fs_exfat = { path = "../fs-exfat" }
+data_recovery_fs_fat32 = { path = "../fs-fat32" }
+data_recovery_fs_apfs = { path = "../fs-apfs" }
+data_recovery_recovery_plan = { path = "../recovery-plan" }
+data_recovery_safe_writer = { path = "../safe-writer" }
+data_recovery_scan_report = { path = "../scan-report" }
+data_recovery_vfs = { path = "../vfs" }
+data_recovery_file_carver = { path = "../file-carver" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+data_recovery_device_macos = { path = "../device-macos" }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+data_recovery_device_windows = { path = "../device-windows" }

@@ -1,0 +1,87 @@
+name: Free P7 evidence bundle
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  attestations: write
+
+concurrency:
+  group: free-p7-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  windows-evidence:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    env:
+      REPOSITORY_VISIBILITY: ${{ github.repository_visibility }}
+    steps:
+      - name: Refuse potentially billed private-repository runner use
+        shell: pwsh
+        run: |
+          if ($env:REPOSITORY_VISIBILITY -ne 'public') {
+            throw 'free-only policy: this workflow may run only in a public repository'
+          }
+
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install pinned Rust toolchain
+        shell: pwsh
+        run: rustup toolchain install 1.85.1 --profile minimal --component clippy,rustfmt
+
+      - name: Run Windows source gates
+        shell: pwsh
+        working-directory: product
+        run: |
+          cargo fmt --all -- --check
+          cargo check --workspace --all-targets --locked
+          cargo test --workspace --locked
+          cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Run release evidence unit tests
+        shell: pwsh
+        run: |
+          python scripts/check-product-security.py
+          python scripts/check-free-p7.py
+          python -m unittest scripts/release/test_generate_release_evidence.py
+
+      - name: Audit dependency advisories, licenses and sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25
+        with:
+          manifest-path: product/Cargo.toml
+          command: check
+          arguments: --all-features
+          command-arguments: advisories licenses sources bans
+
+      - name: Build release CLI
+        shell: pwsh
+        working-directory: product
+        run: cargo build --release --locked -p polik-recovery-cli
+
+      - name: Create free keyless artifact attestation
+        id: attest
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6
+        with:
+          subject-path: product/target/release/polik-recovery.exe
+
+      - name: Generate evidence bundle
+        shell: pwsh
+        run: |
+          python scripts/release/generate_release_evidence.py `
+            --artifact product/target/release/polik-recovery.exe `
+            --output product/target/release-evidence/windows-x86_64 `
+            --attestation-url '${{ steps.attest.outputs.attestation-url }}'
+          python scripts/release/verify_release_evidence.py `
+            product/target/release-evidence/windows-x86_64
+
+      - name: Upload evidence without publishing a release
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: polik-recovery-windows-x86_64-free-p7-evidence
+          path: product/target/release-evidence/windows-x86_64/
+          if-no-files-found: error
+          retention-days: 14

@@ -1,0 +1,11 @@
+[package]
+name = "data_recovery_fs_fat32"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[dependencies]
+data_recovery_core = { path = "../core" }

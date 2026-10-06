@@ -1,0 +1,132 @@
+{
+  "version": "v0.6",
+  "createdAt": "2000-01-01T00:00:00+00:00",
+  "description": "Synthetic fixture for Polik Recovery quality gates.  Use it to measure recovery correctness, not real-world success guarantees.",
+  "image": "disk_image.bin",
+  "expectedRecoverable": [
+    {
+      "name": "valid_photo.png",
+      "fileType": "PNG",
+      "expectedExtension": "png",
+      "size": 77,
+      "sha256": "a703bd0ad5455766ea9fe00989929aadc48ffe5bc9aff665d7f66d6a3178db89",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 256,
+      "length": 77
+    },
+    {
+      "name": "valid_photo.jpg",
+      "fileType": "JPEG",
+      "expectedExtension": "jpg",
+      "size": 188,
+      "sha256": "e676d96deacef31549914e4874006cb35827a7945c4f852a7cf17bf1dc6f1511",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 626,
+      "length": 188
+    },
+    {
+      "name": "valid_document.pdf",
+      "fileType": "PDF",
+      "expectedExtension": "pdf",
+      "size": 458,
+      "sha256": "2c02dd482a8c5b3cf184215274bf9c94c80b535da7ed77051520d596bcb3fdba",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 1144,
+      "length": 458
+    },
+    {
+      "name": "valid_word.docx",
+      "fileType": "ZIP",
+      "expectedExtension": "docx",
+      "size": 548,
+      "sha256": "fcc4367d5b8d7d0047d75d0a3e90b6664c6dcb68fb6decd7a068e308f8df512a",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 1969,
+      "length": 548
+    },
+    {
+      "name": "valid_sheet.xlsx",
+      "fileType": "ZIP",
+      "expectedExtension": "xlsx",
+      "size": 563,
+      "sha256": "35c2b975e2496a2d714d5728c40694fcad6f6c3a56dabb39a7ec55d222c245e0",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 2808,
+      "length": 563
+    },
+    {
+      "name": "valid_slides.pptx",
+      "fileType": "ZIP",
+      "expectedExtension": "pptx",
+      "size": 403,
+      "sha256": "dfb1c5460eea095a5bbc70ee541c69bde10a2961979a23253933ac552ef59802",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 3699,
+      "length": 403
+    },
+    {
+      "name": "valid_movie.mp4",
+      "fileType": "MP4",
+      "expectedExtension": "mp4",
+      "size": 404,
+      "sha256": "9c4f3ee1a9495344071e6828a5bed69304f39acd094a2f7e45589a85804c5430",
+      "expectedTier": "high",
+      "minConfidence": 0.85,
+      "offset": 4467,
+      "length": 404
+    },
+    {
+      "name": "valid_iphone_photo.heic",
+      "fileType": "HEIC",
+      "expectedExtension": "heic",
+      "size": 84,
+      "sha256": "7bea56446784820e93cdefa5c8e4aafdcf076dab39fef8c790d8c647b46fadee",
+      "expectedTier": "high",
+      "minConfidence": 0.7,
+      "offset": 5160,
+      "length": 84
+    }
+  ],
+  "expectedInvalidOrSkipped": [
+    {
+      "name": "broken_png_bad_crc",
+      "expectedTier": "skip",
+      "offset": 5455,
+      "length": 33,
+      "sha256": "765206b9d44c30bf9f646ad520e9666face0116b49b010c84f86e1a89168f2fb"
+    },
+    {
+      "name": "broken_pdf_no_xref",
+      "expectedTier": "skip",
+      "offset": 5699,
+      "length": 27,
+      "sha256": "d3749a5f530bcc0f809d9306c7d7961226f47fb13aa209c6cfb09d539303ce12"
+    },
+    {
+      "name": "broken_zip_no_eocd",
+      "expectedTier": "skip",
+      "offset": 5937,
+      "length": 100,
+      "sha256": "2c01541740543ac1004de85f5287bad86a636326fcb23069b55ee632b55bcc66"
+    },
+    {
+      "name": "padding_blob",
+      "expectedTier": "skip",
+      "offset": 6248,
+      "length": 4096,
+      "sha256": "ad7facb2586fc6e966c004d7d1d16b024f5805ff7cb47c7a85dabd8b48892ca7"
+    }
+  ],
+  "thresholds": {
+    "minimumExpectedFoundRatio": 0.75,
+    "minimumHighConfidenceUsableRatio": 0.8,
+    "maximumFalsePositiveCount": 2,
+    "maximumSkippedExpectedCount": 2
+  }
+}

@@ -1,0 +1,118 @@
+{
+  "version": "v0.8",
+  "createdAt": "2000-01-01T00:00:00+00:00",
+  "description": "Fragmentation and partial-recovery quality fixtures for FAT32/exFAT plus NTFS runlist regression coverage.",
+  "fixtures": [
+    {
+      "fs": "fat32-fragmented",
+      "driver": "fat32",
+      "image": "fixtures/fragmented_quality/fat32_fragmented.bin",
+      "scanCommand": [
+        "fat32-scan-vfs",
+        "--file",
+        "fixtures/fragmented_quality/fat32_fragmented.bin",
+        "--format",
+        "json"
+      ],
+      "expectedEntries": [
+        {
+          "path": "/FRAG.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 653
+        },
+        {
+          "path": "/_ELCHN.TXT",
+          "status": "Deleted",
+          "kind": "File",
+          "size": 661
+        },
+        {
+          "path": "/_ELMIS.TXT",
+          "status": "Deleted",
+          "kind": "File",
+          "size": 662
+        }
+      ],
+      "extracts": [
+        {
+          "name": "FRAG.TXT",
+          "entryId": 1024,
+          "expectedSha256": "e418cd6b3574b84530341a32922c6969e71c7591786c8e8a750d606ef4c8e288",
+          "expectedBytes": 653,
+          "expectedQuality": "complete",
+          "expectedMode": "FatChain"
+        },
+        {
+          "name": "_ELCHN.TXT",
+          "entryId": 1056,
+          "expectedSha256": "b1d147245f20fb7e92f8945148f736ab9d9edd1c06c2c6f56bb90239cf057dea",
+          "expectedBytes": 661,
+          "expectedQuality": "complete",
+          "expectedMode": "FatChain"
+        },
+        {
+          "name": "_ELMIS.TXT",
+          "entryId": 1088,
+          "expectedSha256": "f11f46dea4023c18882610e384376d23ede772aeb5bb3dec5f49f30cf1e35c84",
+          "expectedBytes": 662,
+          "expectedQuality": "suspect_partial",
+          "expectedMode": "ContiguousFallback",
+          "allowHashMismatch": true
+        }
+      ]
+    },
+    {
+      "fs": "exfat-fragmented",
+      "driver": "exfat",
+      "image": "fixtures/fragmented_quality/exfat_fragmented.bin",
+      "scanCommand": [
+        "exfat-scan-vfs",
+        "--file",
+        "fixtures/fragmented_quality/exfat_fragmented.bin",
+        "--format",
+        "json"
+      ],
+      "expectedEntries": [
+        {
+          "path": "/FRAG.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 653
+        },
+        {
+          "path": "/SHORT.TXT",
+          "status": "Allocated",
+          "kind": "File",
+          "size": 664
+        }
+      ],
+      "extracts": [
+        {
+          "name": "FRAG.TXT",
+          "entryId": 1024,
+          "expectedSha256": "718d2fb0120612c267dc9599b36fdaea6302adc33a326018687e3a494de263e0",
+          "expectedBytes": 653,
+          "expectedQuality": "complete",
+          "expectedMode": "FatChain"
+        },
+        {
+          "name": "SHORT.TXT",
+          "entryId": 1120,
+          "expectedSha256": "e8b05399d5787fc990c2ddf87ee77ff38a77200cc5884d80e83d0ba9f51079a6",
+          "expectedBytes": 664,
+          "expectedQuality": "suspect_partial",
+          "expectedMode": "FatChain",
+          "allowHashMismatch": true
+        }
+      ]
+    }
+  ],
+  "thresholds": {
+    "minimumScanEntryMatchRatio": 1.0,
+    "minimumCompleteExtractHashRatio": 1.0,
+    "minimumSuspectClassificationRatio": 1.0,
+    "maximumUnexpectedCompleteForSuspect": 0,
+    "maximumScanFailures": 0
+  }
+}

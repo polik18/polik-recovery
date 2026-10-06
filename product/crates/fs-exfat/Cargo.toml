@@ -1,0 +1,14 @@
+[package]
+name = "data_recovery_fs_exfat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+repository.workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+data_recovery_core = { path = "../core" }
