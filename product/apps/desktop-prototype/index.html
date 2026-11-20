@@ -368,6 +368,11 @@
     .error-block label{display:block;font-size:10.5px;font-weight:850;color:var(--muted);margin-bottom:4px;text-transform:uppercase;letter-spacing:.04em;}
     .error-block div,.error-block pre{font-size:12px;color:var(--text);line-height:1.5;margin:0;white-space:pre-wrap;word-break:break-word;font-family:var(--font-ui);}
     .error-actions{display:flex;gap:7px;flex-wrap:wrap;padding:0 16px 14px;}
+    .app-dialog-backdrop{position:fixed;inset:0;background:rgba(16,24,40,.32);display:grid;place-items:center;padding:18px;z-index:120;}
+    .app-dialog{width:min(520px,100%);background:#fff;border:1px solid var(--border);border-radius:16px;box-shadow:0 24px 80px rgba(20,20,20,.24);padding:18px;display:grid;gap:12px;}
+    .app-dialog-title{font-size:15px;font-weight:900;color:var(--text);}
+    .app-dialog-message{font-size:12.5px;color:var(--text);line-height:1.6;white-space:pre-wrap;word-break:break-word;}
+    .app-dialog-actions{display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap;}
 
     /* v1.9 image-first workflow + ddrescue map/retry */
     .image-panel{border:1px solid rgba(10,186,181,.24);background:linear-gradient(135deg,rgba(10,186,181,.09),#fff);border-radius:13px;padding:12px 13px;display:grid;gap:9px;}
@@ -1587,7 +1592,7 @@ async function openEngineerReport(){
 }
 async function generateDeliveryPackage(){
   if(!activeSession?.sessionDir){ setAS('尚未啟用 Session。請先建立或開啟 Session。','error'); return; }
-  const includeSuspect = confirm(`客戶交付 ZIP 預設只包含 recovered/ 完整區。\n\n是否也納入 suspect/ 可疑與 partial 檔案？\n\n一般交付建議選「取消」，除非客戶明確需要可疑殘檔。`);
+  const includeSuspect = await requestAppConfirmation(`客戶交付 ZIP 預設只包含 recovered/ 完整區。\n\n是否也納入 suspect/ 可疑與 partial 檔案？\n\n一般交付建議選「取消」，除非客戶明確需要可疑殘檔。`, '確認交付內容');
   const cmd=`python3 tools/session/session_delivery_package.py --session ${shellQ(activeSession.sessionDir)}${includeSuspect?' --include-all-suspect':''}`;
   try{ await navigator.clipboard?.writeText(cmd); }catch(_){ }
   renderActiveSession(`${cmd}
@@ -1606,13 +1611,36 @@ async function openDeliveryFolder(){
   try{ await core.invoke('open_report_file',{path:target}); setAS('已要求系統開啟客戶交付包資料夾。','ok'); }
   catch(err){ showFriendlyError('開啟交付資料夾失敗', err, 'Session delivery'); }
 }
-function confirmRiskBeforeScan(){
+function showAppDialog(title, message, options={}){
+  const {confirm=false, confirmLabel='確認', cancelLabel='取消'}=options;
+  return new Promise(resolve=>{
+    const backdrop=document.createElement('div');
+    backdrop.className='app-dialog-backdrop';
+    backdrop.innerHTML=`<div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
+      <div id="appDialogTitle" class="app-dialog-title">${esc(title)}</div>
+      <div class="app-dialog-message">${esc(message)}</div>
+      <div class="app-dialog-actions">
+        <button type="button" class="ghost" data-dialog-cancel>${esc(confirm ? cancelLabel : '關閉')}</button>
+        ${confirm?`<button type="button" class="primary" data-dialog-confirm>${esc(confirmLabel)}</button>`:''}
+      </div>
+    </div>`;
+    document.body.appendChild(backdrop);
+    const finish=value=>{ backdrop.remove(); resolve(value); };
+    backdrop.querySelector('[data-dialog-cancel]').addEventListener('click',()=>finish(false));
+    backdrop.querySelector('[data-dialog-confirm]')?.addEventListener('click',()=>finish(true));
+    backdrop.addEventListener('click',event=>{ if(event.target===backdrop) finish(false); });
+    backdrop.querySelector(confirm?'[data-dialog-confirm]':'[data-dialog-cancel]').focus();
+  });
+}
+function showAppNotice(title, message){ return showAppDialog(title, message); }
+function requestAppConfirmation(message, title='請確認'){ return showAppDialog(title, message, {confirm:true}); }
+async function confirmRiskBeforeScan(){
   const risk=currentRiskAssessment();
   const hardProblem=outputDirProblem();
-  if(hardProblem){ alert('⚠️ 掃描前請先處理：\n'+hardProblem); return false; }
+  if(hardProblem){ await showAppNotice('掃描前需要處理', '⚠️ 掃描前請先處理：\n'+hardProblem); return false; }
   if(risk.level==='high'){
     const top=risk.rows.filter(r=>r.severity==='danger').slice(0,4).map(r=>`・${r.title}：${r.detail}`).join('\n');
-    return confirm(`這次救援判定為高風險（${risk.score}/100）。\n\n${top}\n\n建議先停止使用來源磁碟，最好先做映像檔再掃。仍要開始掃描嗎？`);
+    return requestAppConfirmation(`這次救援判定為高風險（${risk.score}/100）。\n\n${top}\n\n建議先停止使用來源磁碟，最好先做映像檔再掃。仍要開始掃描嗎？`, '高風險掃描確認');
   }
   return true;
 }
@@ -1626,6 +1654,13 @@ function esc(v){ return String(v).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;'
 
 function parseFriendlyError(raw, context='操作'){
   const text=String(raw||'未知錯誤');
+  try{
+    const parsed=JSON.parse(text);
+    if(parsed&&parsed.code){
+      const reason=parsed.messageZh||parsed.message_zh||'程式在這一步遇到錯誤。';
+      return {code:String(parsed.code),reason,action:'請依照詳細資訊處理；若是真實磁碟，建議先建立映像檔再掃描。',target:parsed.target||$('sourcePath')?.value||'-',tech:parsed.detail||text,context,text};
+    }
+  }catch(_){ /* legacy plain-text error */ }
   const get=(label)=>{
     const m=text.match(new RegExp(label+'：([^\n]+)'));
     return m?m[1].trim():'';
@@ -1640,7 +1675,7 @@ function parseFriendlyError(raw, context='操作'){
 function showFriendlyError(title, raw, context='操作'){
   const e=parseFriendlyError(raw, context);
   const drawer=$('errorDrawer');
-  if(!drawer){ alert(`${title}\n${raw}`); return; }
+  if(!drawer){ void showAppNotice(title, String(raw)); return; }
   $('errorTitle').textContent=`❌ ${title}`;
   $('errorSub').textContent=`${e.code}｜${e.context}`;
   $('errorBody').innerHTML=`
@@ -2128,7 +2163,7 @@ function tauriAPI(ns){
   const api=getTauri()?.[ns];
   if(!api){
     const m=`Tauri ${ns} API 尚未載入。請開啟桌面 App；若用瀏覽器開啟 HTML，真實掃描不可用。`;
-    setAS(m,'error'); alert(m); return null;
+    setAS(m,'error'); void showAppNotice('需要桌面 App', m); return null;
   }
   return api;
 }
@@ -2648,7 +2683,7 @@ $('copyCommand').addEventListener('click',async()=>{
     const orig=$('copyCommand').textContent;
     $('copyCommand').textContent=tr('copied');setAS(tr('commandCopied'),'ok');
     setTimeout(()=>$('copyCommand').textContent=orig,1500);
-  }catch(err){setAS(`複製失敗：${err}`,'error');alert('複製失敗：\n'+err);}
+  }catch(err){setAS(`複製失敗：${err}`,'error');showFriendlyError('複製指令失敗', err, '複製指令');}
 });
 
 $('sourcePath').addEventListener('input',()=>{
@@ -2727,14 +2762,14 @@ $('browseSource').addEventListener('click',async()=>{
       }
       renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();updatePrimaryActions();refreshOutputIsolation();
     }
-  }catch(err){setAS(`選擇失敗：${err}`,'error');alert('選擇失敗：\n'+err);}
+  }catch(err){setAS(`選擇失敗：${err}`,'error');showFriendlyError('選擇來源失敗', err, '選擇來源');}
 });
 $('browseOutput').addEventListener('click',async()=>{
   const d=tauriAPI('dialog');if(!d)return;
   try{
     const sel=await d.open({title:'選擇還原檔案要存放的資料夾',directory:true,multiple:false,defaultPath:normalizeOutputDir($('outputPath').value)});
     if(sel){$('outputPath').value=sel;renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();refreshOutputIsolation();setAS('已選擇儲存位置。','ok');}
-  }catch(err){setAS(`選擇失敗：${err}`,'error');alert('選擇失敗：\n'+err);}
+  }catch(err){setAS(`選擇失敗：${err}`,'error');showFriendlyError('選擇輸出位置失敗', err, '選擇輸出位置');}
 });
 
 function ntfsScanCount(){
@@ -2754,16 +2789,16 @@ async function doScan(){
   }
   if(isRawDevicePath(fp)){
     setAS('實體磁碟不可直接掃描，請先建立唯讀映像檔。','error');
-    alert('為保護原始磁碟，請先用 ddrescue 或 hdiutil 建立映像檔，再選擇 .img。');
+    void showAppNotice('需要先建立映像檔', '為保護原始磁碟，請先用 ddrescue 或 hdiutil 建立映像檔，再選擇 .img。');
     return;
   }
   const isolationProblem=outputIsolationProblem();
   if(isolationProblem){
     setAS(isolationProblem,'error');
-    alert(isolationProblem);
+    void showAppNotice('輸出位置需要調整', isolationProblem);
     return;
   }
-  if(!confirmRiskBeforeScan()) return;
+  if(!(await confirmRiskBeforeScan())) return;
   const btns=scanButtons();
   const orig=btns.map(b=>[b,b.textContent]);
   btns.forEach(b=>{b.textContent='⏳ 掃描中...';b.disabled=true;});
@@ -2776,7 +2811,7 @@ async function doScan(){
   }catch(err){
     setStep(1);
     if(isUserCancelError(err)){ setAS('已中止掃描。','error'); }
-    else { setAS(`掃描失敗：${err}`,'error');alert('❌ 掃描失敗：\n'+err); }
+    else { setAS(`掃描失敗：${err}`,'error');showFriendlyError('掃描失敗', err, '掃描'); }
   }finally{
     setOperationBusy(false);
     orig.forEach(([b,t])=>{b.textContent=t;b.disabled=false;});
@@ -2793,10 +2828,10 @@ async function quickRecover(entry, el){
   const outDir = normalizeOutputDir($('outputPath').value.trim() || defaultRecoveryDir);
   const outPath = buildOutputPath(outDir, entry);
   // 顯示確認對話框，預填輸出路徑
-  const confirmed = confirm(
+  const confirmed = await requestAppConfirmation(
     trf('quickRecoverConfirm',{name:fname(entry.path), size:entry.size==='-'?tr('quickRecoverUnknownSize'):fmtBytes(+entry.size), path:outPath},
       `立刻救回這個檔案？\n\n檔案：${fname(entry.path)}\n大小：${entry.size==='-'?'未知':fmtBytes(+entry.size)}\n輸出：${outPath}\n\n按「確認」開始。`)
-  );
+  , '快速救回確認');
   if(!confirmed) return;
   // 按鈕改為進行中狀態
   const btns = el.querySelectorAll('.quick-rec, .quick-rec-g');
@@ -2819,18 +2854,18 @@ async function quickRecover(entry, el){
   }
 }
 
-function doExtract(){
+async function doExtract(){
   const core=tauriAPI('core');if(!core)return;
   const files=selectedFiles();
-  if(!files.length){alert('請先從清單中勾選要還原的檔案！');return;}
+  if(!files.length){await showAppNotice('尚未選擇檔案', '請先從清單中勾選要還原的檔案！');return;}
   const selectedStats=selectedBucketStats();
   if((selectedStats.partial+selectedStats.fragments)>0){
-    const ok=confirm(`你選了 ${selectedStats.partial} 個部分救援、${selectedStats.fragments} 個低信心碎片。\n\n這些檔案很可能打不開，程式會隔離到 suspect/，不會放進 recovered/。仍要繼續嗎？`);
+    const ok=await requestAppConfirmation(`你選了 ${selectedStats.partial} 個部分救援、${selectedStats.fragments} 個低信心碎片。\n\n這些檔案很可能打不開，程式會隔離到 suspect/，不會放進 recovered/。仍要繼續嗎？`, '低信心檔案還原確認');
     if(!ok) return;
   }
   const fp=$('sourcePath').value.trim();
   const outProblem=outputDirProblem();
-  if(outProblem){ alert('⚠️ 儲存位置需要調整：\n'+outProblem); setAS(outProblem,'error'); return; }
+  if(outProblem){ await showAppNotice('儲存位置需要調整', '⚠️ 儲存位置需要調整：\n'+outProblem); setAS(outProblem,'error'); return; }
   extractButtons().forEach(b=>{b.textContent='⏳ 還原中...';b.disabled=true;});
   (async()=>{
     setOperationBusy(true, '正在準備批次還原...');
@@ -2846,7 +2881,7 @@ function doExtract(){
   })()
     .catch(err=>{
       if(isUserCancelError(err)){ setAS('已中止還原。','error'); }
-      else { setAS(`還原失敗：${err}`,'error');alert('❌ 還原失敗：\n'+err); }
+      else { setAS(`還原失敗：${err}`,'error');showFriendlyError('還原失敗', err, '批次還原'); }
     })
     .finally(()=>{
       setOperationBusy(false);
@@ -2895,7 +2930,7 @@ try{
   renderActiveSession();
 }catch(err){
   setAS(`介面初始化失敗：${err}`,'error');
-  alert('介面初始化失敗：\n'+err);
+  void showAppNotice('介面初始化失敗', String(err));
 }
 </script>
 </body>

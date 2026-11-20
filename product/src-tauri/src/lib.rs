@@ -150,6 +150,14 @@ struct ScanPageResponse {
     next_cursor: Option<usize>,
 }
 
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct StructuredErrorPayload {
+    code: String,
+    message_zh: String,
+    detail: String,
+}
+
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct ScanEntryPayload {
@@ -2176,10 +2184,12 @@ fn friendly_runtime_error(context: &str, target: &str, raw: &str) -> String {
         )
     };
 
-    format!(
-        "{}失敗\n錯誤代碼：{}\n可能原因：{}\n建議處理：{}\n目標：{}\n技術訊息：{}",
-        context, code, reason, action, target, raw
-    )
+    serde_json::to_string(&StructuredErrorPayload {
+        code: code.to_string(),
+        message_zh: format!("{}失敗：{}", context, reason),
+        detail: format!("建議處理：{}；目標：{}；技術訊息：{}", action, target, raw),
+    })
+    .unwrap_or_else(|_| format!("{}失敗：{}", context, raw))
 }
 
 fn open_source(file_path: &str) -> Result<FileBlockSource, String> {
@@ -3624,49 +3634,6 @@ fn perform_extract_batch(
 // open-source import. A signed, authenticated least-privilege helper must be
 // designed before raw-device elevation can return.
 
-fn is_perm_denied(e: &str) -> bool {
-    e.contains("Permission denied") || e.contains("os error 1)")
-}
-
-fn privileged_access_error() -> String {
-    "實體磁碟的舊版管理員權限流程已因安全風險停用；目前只能使用一般權限可讀的測試映像檔。"
-        .to_string()
-}
-
-fn run_privileged_scan(
-    device: &str,
-    mode: &str,
-    count: usize,
-    app: &tauri::AppHandle,
-) -> Result<ScanResponse, String> {
-    let _ = (device, mode, count, app);
-    Err(privileged_access_error())
-}
-
-fn run_privileged_extract(
-    device: &str,
-    mode: &str,
-    selected_id: &str,
-    output_path: &str,
-    app: &tauri::AppHandle,
-) -> Result<String, String> {
-    let _ = (device, mode, selected_id, output_path, app);
-    Err(privileged_access_error())
-}
-
-fn run_privileged_extract_batch(
-    device: &str,
-    mode: &str,
-    items: Vec<BatchExtractItem>,
-    app: &tauri::AppHandle,
-) -> Result<Vec<String>, String> {
-    let _ = (device, mode, items, app);
-    Err(privileged_access_error())
-}
-
-#[cfg(target_os = "macos")]
-fn shutdown_privileged_server_for_cancel() {}
-
 // ── Tauri commands ────────────────────────────────────────────────────────────
 
 #[tauri::command]
@@ -4292,12 +4259,17 @@ async fn open_report_file(path: String) -> Result<(), String> {
     open_path_with_system(&target).map_err(|e| format!("無法開啟報告：{}", e))
 }
 
-fn raw_path_exists(file_path: &str) -> bool {
-    if file_path.starts_with(r"\\.\") {
-        true
-    } else {
-        PathBuf::from(file_path).exists()
+fn validate_image_source_path(file_path: &str) -> Result<(), String> {
+    if file_path.starts_with("/dev/") || file_path.starts_with(r"\\.\") {
+        return Err(
+            "RAW_DEVICE_UNSUPPORTED: 請先建立唯讀映像檔，再將 .img 作為來源；桌面 App 不會開啟實體磁碟。"
+                .to_string(),
+        );
     }
+    if !PathBuf::from(file_path).exists() {
+        return Err(format!("找不到指定的來源映像檔：{}", file_path));
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -4309,9 +4281,7 @@ async fn run_recovery_scan(
     count: usize,
 ) -> Result<ScanResponse, String> {
     reset_cancellation();
-    if !raw_path_exists(&file_path) {
-        return Err(format!("找不到指定的來源映像檔或設備：{}", file_path));
-    }
+    validate_image_source_path(&file_path)?;
     emit_scan_progress(Some(&app), 1, 0, 0, 0, "正在讀取磁碟資料...");
     let scan_app = app.clone();
     let scan_file_path = file_path.clone();
@@ -4337,12 +4307,8 @@ async fn run_recovery_scan(
             .ok();
             return Ok(prepare_scan_response(r));
         }
-        Err(e) if file_path.starts_with("/dev/") && is_perm_denied(&e) => {}
         Err(e) => return Err(friendly_runtime_error("掃描", &file_path, &e)),
     }
-    run_privileged_scan(&file_path, &mode, count, &app)
-        .map(prepare_scan_response)
-        .map_err(|e| friendly_runtime_error("掃描", &file_path, &e))
 }
 
 #[tauri::command]
@@ -4378,9 +4344,7 @@ async fn run_recovery_extract(
     output_path: String,
 ) -> Result<String, String> {
     reset_cancellation();
-    if !raw_path_exists(&file_path) {
-        return Err(format!("找不到指定的來源映像檔：{}", file_path));
-    }
+    validate_image_source_path(&file_path)?;
     app.emit("extract-progress", "正在讀取來源磁碟...").ok();
     let extract_file_path = file_path.clone();
     let extract_mode = mode.clone();
@@ -4403,11 +4367,8 @@ async fn run_recovery_extract(
             app.emit("extract-progress", "100% - 還原完成").ok();
             return Ok(msg);
         }
-        Err(e) if file_path.starts_with("/dev/") && is_perm_denied(&e) => {}
         Err(e) => return Err(friendly_runtime_error("還原", &file_path, &e)),
     }
-    run_privileged_extract(&file_path, &mode, &selected_id, &output_path, &app)
-        .map_err(|e| friendly_runtime_error("還原", &file_path, &e))
 }
 
 #[tauri::command]
@@ -4419,9 +4380,7 @@ async fn run_recovery_extract_batch(
     items: Vec<BatchExtractItem>,
 ) -> Result<Vec<String>, String> {
     reset_cancellation();
-    if !raw_path_exists(&file_path) {
-        return Err(format!("找不到指定的來源映像檔：{}", file_path));
-    }
+    validate_image_source_path(&file_path)?;
     if items.is_empty() {
         return Err("沒有選取任何要還原的檔案。".to_string());
     }
@@ -4435,36 +4394,31 @@ async fn run_recovery_extract_batch(
         },
     )
     .ok();
-    if !file_path.starts_with("/dev/") {
-        let req = BatchExtractRequest {
-            device: file_path.clone(),
-            mode: mode.clone(),
-            offset,
-            items,
-        };
-        let batch_app = app.clone();
-        let out = tauri::async_runtime::spawn_blocking(move || {
-            perform_extract_batch(req, Some(&batch_app))
-        })
-        .await
-        .map_err(|error| format!("批次還原工作執行緒失敗：{}", error))?;
-        if let Some(err) = out.error {
-            return Err(friendly_runtime_error("批次還原", &file_path, &err));
-        }
-        app.emit(
-            "extract-progress",
-            ExtractProgressPayload {
-                pct: 100,
-                done: out.messages.len(),
-                total: out.messages.len(),
-                current_file: "批次還原完成".to_string(),
-            },
-        )
-        .ok();
-        return Ok(out.messages);
+    let req = BatchExtractRequest {
+        device: file_path.clone(),
+        mode: mode.clone(),
+        offset,
+        items,
+    };
+    let batch_app = app.clone();
+    let out =
+        tauri::async_runtime::spawn_blocking(move || perform_extract_batch(req, Some(&batch_app)))
+            .await
+            .map_err(|error| format!("批次還原工作執行緒失敗：{}", error))?;
+    if let Some(err) = out.error {
+        return Err(friendly_runtime_error("批次還原", &file_path, &err));
     }
-    run_privileged_extract_batch(&file_path, &mode, items, &app)
-        .map_err(|e| friendly_runtime_error("批次還原", &file_path, &e))
+    app.emit(
+        "extract-progress",
+        ExtractProgressPayload {
+            pct: 100,
+            done: out.messages.len(),
+            total: out.messages.len(),
+            current_file: "批次還原完成".to_string(),
+        },
+    )
+    .ok();
+    Ok(out.messages)
 }
 
 #[tauri::command]
@@ -4474,14 +4428,7 @@ async fn cancel_current_operation(app: tauri::AppHandle) -> Result<String, Strin
         .ok();
     app.emit("extract-progress", "正在中止目前掃描 / 還原作業...")
         .ok();
-    #[cfg(target_os = "macos")]
-    {
-        shutdown_privileged_server_for_cancel();
-    }
-    Ok(
-        "已送出中止要求；若正在讀取大型磁碟，會在目前讀取區段完成或權限工作站關閉後停止。"
-            .to_string(),
-    )
+    Ok("已送出中止要求；目前同步工作會在下一個安全檢查點停止。".to_string())
 }
 
 // ── Thumbnail generation ──────────────────────────────────────────────────────
@@ -4881,8 +4828,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        ScanEntryPayload, ScanResponse, check_output_isolation, get_scan_page, open_source,
-        prepare_scan_response, validate_report_open_target,
+        check_output_isolation, get_scan_page, open_source, prepare_scan_response,
+        validate_report_open_target, ScanEntryPayload, ScanResponse,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};

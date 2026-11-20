@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 37,
-  "updated_at": "2026-11-21T01:15:00+08:00",
+  "revision": 38,
+  "updated_at": "2026-11-21T01:20:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -442,16 +442,21 @@
       "depends_on": [
         "U1"
       ],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/U4-structured-errors",
       "started_at": "2026-11-21T01:13:00+08:00",
-      "finished_at": null,
-      "next_step": "移除 Tauri 後端 privileged stub／/dev 分支與取消時的 helper hook；再將主要 runtime errors 改成 code/messageZh/detail 並讓前端統一呈現。",
+      "finished_at": "2026-11-21T01:20:00+08:00",
+      "next_step": null,
       "blockers": [],
-      "evidence": [],
+      "evidence": [
+        "移除 src-tauri/src/lib.rs 的 run_privileged_*、shutdown_privileged_server_for_cancel、is_perm_denied 與掃描／還原中的特權 fallback；實體 /dev/ 與 Windows raw path 改為 fail-closed 的 RAW_DEVICE_UNSUPPORTED。",
+        "主要 runtime errors 改為 JSON {code,messageZh,detail}；desktop 前端 parseFriendlyError 依 code 統一進入錯誤抽屜，並以 App 內對話框取代所有 alert/confirm。",
+        "python3 scripts/check-product-security.py、python3 scripts/check-product-frontend.py、node --check inline script、git diff --check：全部通過；grep -n 'run_privileged_\\|alert(\\|confirm(' product/src-tauri product/apps：無結果。",
+        "rustfmt --edition 2021 --check、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast：通過；全 workspace 測試 109 passed / 0 failed。"
+      ],
       "notes": [
-        "目前只完成認領，尚未修改 U4 hot file。"
+        "保留 /dev/ 相關字串於裝置列舉、輸出隔離、映像工作流與測試；它們是防護與診斷用途，不是特權開啟分支。withGlobalTauri 仍保留，因目前單檔前端透過受控 Tauri global API 運作；後續若改成正式 bridge 再評估關閉。"
       ]
     },
     {
