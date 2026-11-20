@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 43,
-  "updated_at": "2026-11-21T02:30:00+08:00",
+  "revision": 44,
+  "updated_at": "2026-11-21T01:36:45+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -479,15 +479,22 @@
         "P4",
         "U4"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/U4-structured-errors",
+      "started_at": "2026-11-21T00:40:00+08:00",
+      "finished_at": "2026-11-21T01:36:45+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "src-tauri/src/lib.rs 已拆為 session.rs、disks.rs、scan.rs、extract.rs、diagnostics.rs、thumbnail.rs、errors.rs；Tauri commands 維持既有 invoke handler 路徑。",
+        "apps/desktop-prototype/index.html 的 inline CSS/JavaScript 已外移至 style.css 與 app.js，且無 inline script、event-handler 或 style attribute。",
+        "src-tauri/tauri.conf.json 已移除 style-src 'unsafe-inline'，check-product-frontend.py 已改驗證 external app.js。",
+        "python3 scripts/check-product-security.py、python3 scripts/check-product-frontend.py、node --check product/apps/desktop-prototype/app.js、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast：全部通過。"
+      ],
+      "notes": [
+        "全 workspace 測試仍為 109 個通過；僅保留既有 dead_code/private-interface warning，未引入失敗。"
+      ]
     },
     {
       "id": "W1",

@@ -52,7 +52,11 @@ def main() -> int:
         errors.append("legacy helper binary source must remain removed")
 
     desktop_source = PRODUCT / "src-tauri" / "src" / "lib.rs"
-    desktop_text = desktop_source.read_text(encoding="utf-8")
+    desktop_dir = desktop_source.parent
+    desktop_sources = [desktop_source, *sorted(desktop_dir.glob("*.rs"))]
+    desktop_text = "\n".join(
+        path.read_text(encoding="utf-8") for path in desktop_sources if path.exists()
+    )
     if "data_recovery_safe_writer::write_recovered_file(" in desktop_text:
         errors.append("desktop recovery output must use the storage-identity verified writer")
     if "StorageIdentity::from_physical_stores" in desktop_text:

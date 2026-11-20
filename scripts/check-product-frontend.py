@@ -14,6 +14,7 @@ import sys
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG = ROOT / "product" / "src-tauri" / "tauri.conf.json"
 FRONTEND = ROOT / "product" / "apps" / "desktop-prototype" / "index.html"
+FRONTEND_SCRIPT = ROOT / "product" / "apps" / "desktop-prototype" / "app.js"
 
 
 def csp_hash(content: str) -> str:
@@ -40,17 +41,22 @@ def main() -> int:
         errors.append("desktop script-src must not allow unsafe-inline")
 
     html = FRONTEND.read_text(encoding="utf-8")
-    if not re.search(r"if\s*\(\s*isRawDevicePath\(fp\)\s*\)", html):
+    script = FRONTEND_SCRIPT.read_text(encoding="utf-8") if FRONTEND_SCRIPT.exists() else ""
+    source = f"{html}\n{script}"
+    if not re.search(r"if\s*\(\s*isRawDevicePath\(fp\)\s*\)", source):
         errors.append("desktop scan path must reject raw-device paths before run_recovery_scan")
-    if "isRawDevicePath" not in html or "run_recovery_scan" not in html:
+    if "isRawDevicePath" not in source or "run_recovery_scan" not in source:
         errors.append("desktop frontend raw-device safety contract is incomplete")
-    scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, flags=re.I | re.S)
-    if len(scripts) != 1:
-        errors.append(f"expected exactly one inline desktop script, found {len(scripts)}")
-    else:
-        expected_hash = csp_hash(scripts[0])
-        if expected_hash not in script_directive:
-            errors.append(f"desktop script CSP hash is stale; expected {expected_hash}")
+    scripts = re.findall(
+        r"<script(?![^>]*\bsrc\s*=)[^>]*>(.*?)</script>",
+        html,
+        flags=re.I | re.S,
+    )
+    external_scripts = re.findall(r'<script[^>]+src=["\']([^"\']+)["\'][^>]*></script>', html, flags=re.I)
+    if scripts:
+        errors.append(f"desktop frontend must not use inline scripts, found {len(scripts)}")
+    if not external_scripts or "app.js" not in external_scripts:
+        errors.append("desktop frontend must load the external app.js entrypoint")
 
     if re.search(r"\son[a-z]+\s*=", html, flags=re.I):
         errors.append("desktop frontend must not use inline event-handler attributes")
@@ -59,7 +65,7 @@ def main() -> int:
         for error in errors:
             print(f"ERROR: {error}", file=sys.stderr)
         return 1
-    print("Desktop frontend CSP and inline-script hash are consistent.")
+    print("Desktop frontend CSP and external-script contract are consistent.")
     return 0
 
 
