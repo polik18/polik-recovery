@@ -1,6 +1,8 @@
 use data_recovery_core::{BlockSource, FileBlockSource};
+use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Mutex, OnceLock};
 use tauri::Emitter;
 
 const NTFS_QUICK_SCAN_COUNT: usize = 10_000;
@@ -10,6 +12,48 @@ const NTFS_ADS_ID_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
 const APFS_MAX_EXTRACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
 static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
+const THUMBNAIL_CACHE_CAPACITY: usize = 128;
+
+struct ThumbnailCache {
+    values: HashMap<String, String>,
+    lru: VecDeque<String>,
+}
+
+static THUMBNAIL_CACHE: OnceLock<Mutex<ThumbnailCache>> = OnceLock::new();
+
+fn thumbnail_cache() -> &'static Mutex<ThumbnailCache> {
+    THUMBNAIL_CACHE.get_or_init(|| {
+        Mutex::new(ThumbnailCache {
+            values: HashMap::new(),
+            lru: VecDeque::new(),
+        })
+    })
+}
+
+fn cached_thumbnail(key: &str) -> Option<String> {
+    let mut cache = thumbnail_cache().lock().ok()?;
+    let value = cache.values.get(key).cloned()?;
+    if let Some(position) = cache.lru.iter().position(|item| item == key) {
+        cache.lru.remove(position);
+    }
+    cache.lru.push_back(key.to_string());
+    Some(value)
+}
+
+fn cache_thumbnail(key: String, value: String) {
+    if let Ok(mut cache) = thumbnail_cache().lock() {
+        cache.values.insert(key.clone(), value);
+        if let Some(position) = cache.lru.iter().position(|item| item == &key) {
+            cache.lru.remove(position);
+        }
+        cache.lru.push_back(key);
+        while cache.lru.len() > THUMBNAIL_CACHE_CAPACITY {
+            if let Some(evicted) = cache.lru.pop_front() {
+                cache.values.remove(&evicted);
+            }
+        }
+    }
+}
 
 fn reset_cancellation() {
     CANCEL_REQUESTED.store(false, Ordering::SeqCst);
@@ -4085,7 +4129,15 @@ async fn run_recovery_scan(
         return Err(format!("找不到指定的來源映像檔或設備：{}", file_path));
     }
     emit_scan_progress(Some(&app), 1, 0, 0, 0, "正在讀取磁碟資料...");
-    match perform_scan(&file_path, &mode, offset, count, Some(&app)) {
+    let scan_app = app.clone();
+    let scan_file_path = file_path.clone();
+    let scan_mode = mode.clone();
+    let scan_result = tauri::async_runtime::spawn_blocking(move || {
+        perform_scan(&scan_file_path, &scan_mode, offset, count, Some(&scan_app))
+    })
+    .await
+    .map_err(|error| format!("掃描工作執行緒失敗：{}", error))?;
+    match scan_result {
         Ok(r) => {
             check_cancelled()?;
             app.emit(
@@ -4122,7 +4174,22 @@ async fn run_recovery_extract(
         return Err(format!("找不到指定的來源映像檔：{}", file_path));
     }
     app.emit("extract-progress", "正在讀取來源磁碟...").ok();
-    match perform_extract(&file_path, &mode, offset, &selected_id, &output_path) {
+    let extract_file_path = file_path.clone();
+    let extract_mode = mode.clone();
+    let extract_selected_id = selected_id.clone();
+    let extract_output_path = output_path.clone();
+    let extract_result = tauri::async_runtime::spawn_blocking(move || {
+        perform_extract(
+            &extract_file_path,
+            &extract_mode,
+            offset,
+            &extract_selected_id,
+            &extract_output_path,
+        )
+    })
+    .await
+    .map_err(|error| format!("還原工作執行緒失敗：{}", error))?;
+    match extract_result {
         Ok(msg) => {
             check_cancelled()?;
             app.emit("extract-progress", "100% - 還原完成").ok();
@@ -4167,7 +4234,12 @@ async fn run_recovery_extract_batch(
             offset,
             items,
         };
-        let out = perform_extract_batch(req, Some(&app));
+        let batch_app = app.clone();
+        let out = tauri::async_runtime::spawn_blocking(move || {
+            perform_extract_batch(req, Some(&batch_app))
+        })
+        .await
+        .map_err(|error| format!("批次還原工作執行緒失敗：{}", error))?;
         if let Some(err) = out.error {
             return Err(friendly_runtime_error("批次還原", &file_path, &err));
         }
@@ -4208,6 +4280,25 @@ async fn cancel_current_operation(app: tauri::AppHandle) -> Result<String, Strin
 
 #[tauri::command]
 async fn read_file_thumbnail(
+    file_path: String,
+    mode: String,
+    selected_id: String,
+    offset: u64,
+) -> Result<String, String> {
+    let cache_key = format!("{}|{}|{}|{}", file_path, mode, offset, selected_id);
+    if let Some(cached) = cached_thumbnail(&cache_key) {
+        return Ok(cached);
+    }
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        read_file_thumbnail_impl(file_path, mode, selected_id, offset)
+    })
+    .await
+    .map_err(|error| format!("縮圖工作執行緒失敗：{}", error))??;
+    cache_thumbnail(cache_key, result.clone());
+    Ok(result)
+}
+
+fn read_file_thumbnail_impl(
     file_path: String,
     mode: String,
     selected_id: String,

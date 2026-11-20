@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 28,
-  "updated_at": "2026-11-21T00:24:30+08:00",
+  "revision": 29,
+  "updated_at": "2026-11-21T00:31:20+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -318,9 +318,14 @@
       "branch": "wp/P4-desktop-nonblocking",
       "started_at": "2026-11-21T00:24:30+08:00",
       "finished_at": null,
-      "next_step": "先將 run_recovery_scan、extract、batch 與 thumbnail 的同步工作移至 spawn_blocking；再補 structured scan page response 與 source+offset thumbnail LRU。",
+      "next_step": "補 ScanResponse structured entries 與分頁 command／前端首次可見頁；再以合成大量結果量測 UI 首次可見時間與取消回應。",
       "blockers": [],
-      "evidence": [],
+      "evidence": [
+        "run_recovery_scan、run_recovery_extract、run_recovery_extract_batch 改由 Tauri async runtime 的 spawn_blocking 執行同步重工作；read_file_thumbnail 同樣移至 blocking worker。",
+        "縮圖加入 source path + mode + offset + selected id key 的 128 項 Mutex LRU cache，命中時不重讀來源；未改變 raw-device／safe-writer 門禁。",
+        "cargo fmt --all -- --check、cargo check --workspace --all-targets --locked、cargo clippy --workspace --all-targets --locked -- -D warnings、cargo test -p polik-recovery-desktop --locked：通過（5 tests）。",
+        "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、git diff --check：通過。"
+      ],
       "notes": []
     },
     {
