@@ -6,6 +6,11 @@ publish = false
 
 [workspace]
 
+[[bin]]
+name = "ntfs-mft-bench"
+path = "src/bin/ntfs_mft_bench.rs"
+
 [dependencies]
 data_recovery_core = { path = "../../crates/core" }
 data_recovery_file_carver = { path = "../../crates/file-carver" }
+data_recovery_fs_ntfs = { path = "../../crates/fs-ntfs" }
