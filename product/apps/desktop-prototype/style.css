@@ -396,4 +396,3 @@
     .session-status code{font-family:var(--font-mono);font-size:10.5px;word-break:break-all;}
     .session-grid{display:grid;grid-template-columns:1fr;gap:5px;font-size:11px;}
     .session-checks{border:1px solid var(--border);border-radius:10px;background:var(--panel-2);padding:8px;font-size:10.8px;white-space:pre-wrap;max-height:160px;overflow:auto;}
-
