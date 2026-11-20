@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 33,
-  "updated_at": "2026-11-21T00:50:00+08:00",
+  "revision": 34,
+  "updated_at": "2026-11-21T00:56:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -289,7 +289,8 @@
       "blockers": [],
       "evidence": [
         "file-carver 新增 `CarveProgress` 與 `carve_source_with_callback`；callback 可在 chunk 邊界回報 scanned_bytes／total_bytes／files_found 並以 ControlFlow::Break 停止後續掃描。",
-        "新增 callback_can_cancel_after_first_chunk；file-carver 10 unit tests、3 format tests、doc-tests 全部通過。"
+        "新增 callback_can_cancel_after_first_chunk；file-carver 10 unit tests、3 format tests、doc-tests 全部通過。",
+        "Tauri carver scan 接上 callback：每個 chunk emit scan-progress，讀取全域取消旗標後以 ControlFlow::Break 結束並回傳『使用者已中止目前深度掃描』；cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast：通過。"
       ],
       "notes": [
         "目前只完成 callback／取消邊界的第一階段；尚未宣稱串流寫出或多執行緒掃描完成。"

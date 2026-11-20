@@ -1,5 +1,6 @@
 use data_recovery_core::{BlockSource, FileBlockSource};
 use std::collections::{HashMap, VecDeque};
+use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
@@ -2661,8 +2662,36 @@ fn perform_scan(
                 &format!("正在深度掃描 {} MB；找到候選片段前無可靠百分比…", size_mb),
             );
             let config = data_recovery_file_carver::CarverConfig::default();
-            let carved = data_recovery_file_carver::carve_source(&source, &config)
-                .map_err(|e| e.to_string())?;
+            let carve_report = data_recovery_file_carver::carve_source_with_callback(
+                &source,
+                &config,
+                |progress| {
+                    let pct = if progress.total_bytes > 0 {
+                        ((progress.scanned_bytes.saturating_mul(55)) / progress.total_bytes).min(55)
+                            as u8
+                    } else {
+                        0
+                    };
+                    emit_scan_progress(
+                        notify,
+                        pct.max(3),
+                        progress.scanned_bytes.min(usize::MAX as u64) as usize,
+                        progress.total_bytes.min(usize::MAX as u64) as usize,
+                        progress.files_found,
+                        "正在深度掃描檔案特徵碼...",
+                    );
+                    if operation_cancelled() {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                },
+            )
+            .map_err(|e| e.to_string())?;
+            if carve_report.cancelled {
+                return Err("使用者已中止目前深度掃描。".to_string());
+            }
+            let carved = carve_report.carved_files;
             check_cancelled()?;
             emit_scan_progress(
                 notify,
