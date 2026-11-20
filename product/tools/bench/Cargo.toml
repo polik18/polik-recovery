@@ -1,0 +1,11 @@
+[package]
+name = "polik-recovery-carver-bench"
+version = "0.2.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+data_recovery_core = { path = "../../crates/core" }
+data_recovery_file_carver = { path = "../../crates/file-carver" }

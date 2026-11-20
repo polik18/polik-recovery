@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 5,
-  "updated_at": "2026-11-20T23:08:23+08:00",
+  "revision": 7,
+  "updated_at": "2026-11-20T23:12:50+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -53,7 +53,7 @@
       "depends_on": [
         "S1"
       ],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/S2-product-ci",
       "started_at": "2026-11-20T23:07:20+08:00",
@@ -75,15 +75,21 @@
       "title": "建立效能與誤判基準（bench + 負樣本 corpus）",
       "priority": "P0",
       "depends_on": [],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/S3-carver-bench",
+      "started_at": "2026-11-20T23:09:16+08:00",
+      "finished_at": "2026-11-20T23:12:50+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "python3 tools/bench/run_carver_bench.py：成功產生並執行 zero256、random256、pk_dense64、ftyp_dense64 四類映像，輸出 target/bench/carver-bench.json。",
+        "基線結果：zero carved=0、random carved=9、PK-dense carved=0／13.12 MiB/s／peak RSS 134791168 bytes、ftyp-dense carved=0／145.84 MiB/s／peak RSS 134791168 bytes。",
+        "cargo fmt --manifest-path tools/bench/Cargo.toml -- --check、python3 -m py_compile tools/bench/run_carver_bench.py、git diff --check：全部通過。"
+      ],
+      "notes": [
+        "random 負樣本目前重現 9 個 JPEG 誤判，符合待辦 C1 的問題證據；--enforce-random-zero 硬門禁待 C1 修正後接入 Product CI，未把已知失敗誤報為通過。"
+      ]
     },
     {
       "id": "S4",
