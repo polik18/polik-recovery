@@ -772,11 +772,11 @@ const I18N = {
   en: {
     appTitle:'Polik Recovery', brandLogo:'P', brandName:'Polik Recovery', brandSubtitle:'Recover important files safely',
     navLabel:'Scan type', sampleLabel:'Sample data', loadSample:'↻ Load selected sample', advancedMode:'⚙️ Advanced mode', sidebarNote:'Read-only disk access. Source data is never modified.',
-    workbench:'Recovery Workbench', runtimePreview:'Preview mode', desktopMode:'Desktop App Mode', previewModeMessage:'Preview mode: sample screens are available. Use the desktop app for real scans.', reanalyze:'⟳ Reanalyze', copyCommand:'⇩ Copy command', startScan:'▶ Start Scan', stop:'⏹ Stop', restoreSelected:'💾 Restore Selected Files',
+    workbench:'Recovery Workbench', runtimePreview:'Preview mode', desktopMode:'Desktop App Mode', previewModeMessage:'Preview mode: sample screens are available. Use the desktop app for real scans.', reanalyze:'⟳ Reanalyze', copyCommand:'⇩ Copy command', chooseImage:'📁 Choose Image', startScan:'▶ Start Scan', stop:'⏹ Stop', restoreSelected:'💾 Restore Selected Files',
     steps:{select:'Select disk', scanning:'Scanning', restore:'Select and restore'},
     scanTitle:'Scanning, please wait...', scanSub:'The system is safely reading disk contents.<br>This process will not modify your data.', scanReading:'Reading...', stopCurrent:'⏹ Stop current operation', scanTip:'Large disks can take longer to scan. Stop requests the current read flow to halt and closes the privileged helper in physical disk mode.',
     safe:{readTitle:'Read-only scan', readSub:'No writes to the source disk', saveTitle:'Save elsewhere', saveSub:'Avoid overwriting original data', pickTitle:'Pick files', pickSub:'Select files after scanning', authTitle:'Authorize once', authSub:'No repeated prompts in one run', imageTitle:'Image first', imageSub:'Scan .img instead of stressing the source'},
-    recommendedFlow:'Recommended flow', diskPick:'Detected disks <span style="font-weight:400;color:var(--muted)">- connect one, then press refresh</span>', detecting:'- Detecting... -', sourcePath:'Source disk / image path (advanced)', ntfsDepth:'NTFS scan depth',
+    recommendedFlow:'Recommended flow', diskPick:'Create an image (recommended) <span style="font-weight:400;color:var(--muted)">- direct physical-disk scanning is disabled</span>', detecting:'- Detecting... -', sourcePath:'Source image path', ntfsDepth:'NTFS scan depth',
     ntfsOptions:['Standard: estimate full MFT automatically (recommended)','Quick: scan first 10,000 records','Conservative: scan first 50,000 records'], ntfsHelp:'Use Standard when too few files are found. It reads $MFT size first instead of scanning only a fixed short range.',
     outputPath:'Recovery output folder <span class="danger-inline">do not choose the source disk</span>', choose:'📁 Choose', outputHelp:'Save to Desktop, an external disk, or another safe folder to avoid overwriting the disk being recovered.',
     riskTitle:'🟢 Pre-scan risk check', riskLow:'Low risk', riskInitial:'<strong>Read-only scan.</strong> Source, format, and output location are checked before scanning to reduce overwrite risk.', riskRecommendation:'Recommendation: save recovered files to another disk',
@@ -801,11 +801,11 @@ const I18N = {
 I18N['zh-Hant'] = {
   appTitle:'波立克資料救援', brandLogo:'波', brandName:'波立克資料救援', brandSubtitle:'安全救援您的重要檔案',
   navLabel:'掃描類型', sampleLabel:'範例資料', loadSample:'↻ 載入所選模式範例', advancedMode:'⚙️ 進階模式', sidebarNote:'以唯讀模式存取磁碟，絕不修改您的原始資料。',
-  workbench:'資料救援工作台', runtimePreview:'預覽模式', desktopMode:'桌面 App 模式', previewModeMessage:'目前是預覽模式：可看範例畫面；真實掃描請用桌面 App 開啟。', reanalyze:'⟳ 重新分析', copyCommand:'⇩ 複製指令', startScan:'▶ 開始掃描', stop:'⏹ 中止', restoreSelected:'💾 還原選取的檔案',
+  workbench:'資料救援工作台', runtimePreview:'預覽模式', desktopMode:'桌面 App 模式', previewModeMessage:'目前是預覽模式：可看範例畫面；真實掃描請用桌面 App 開啟。', reanalyze:'⟳ 重新分析', copyCommand:'⇩ 複製指令', chooseImage:'📁 選擇映像檔', startScan:'▶ 開始掃描', stop:'⏹ 中止', restoreSelected:'💾 還原選取的檔案',
   steps:{select:'選擇磁碟', scanning:'掃描中', restore:'選擇並還原'}, recommendedFlow:'建議流程', choose:'📁 選擇', regenerate:'重新產生', checkAgain:'重新檢查', notChecked:'尚未檢查', startSafeScan:'▶ 開始安全掃描', previewSample:'👀 先看範例結果', clear:'清除', selectUsable:'全選可用檔', selectedPrefix:'已選', details:'檔案詳細資訊', notSelected:'未選取',
   scanTitle:'正在掃描，請稍候...', scanSub:'系統正在安全地讀取磁碟內容，<br>這個過程不會修改您的任何資料。', scanReading:'讀取中...', stopCurrent:'⏹ 中止目前作業', scanTip:'大型磁碟掃描可能需要較久；按中止會要求目前讀取流程停止，實體磁碟模式會同時關閉管理員權限工作站。',
   safe:{readTitle:'唯讀掃描', readSub:'不寫入來源磁碟', saveTitle:'另存救援', saveSub:'避免覆蓋原資料', pickTitle:'勾選還原', pickSub:'掃完再挑要救的檔案', authTitle:'身分檢查', authSub:'來源與輸出必須是不同實體磁碟', imageTitle:'先建映像', imageSub:'掃 .img，不反覆磨原碟'},
-  diskPick:'偵測到的磁碟 <span style="font-weight:400;color:var(--muted)">— 插上後按 🔄</span>', detecting:'— 正在偵測... —', sourcePath:'來源磁碟 / 映像檔路徑（進階）', ntfsDepth:'NTFS 掃描深度', ntfsOptions:['標準：自動估算完整 MFT（建議）','快速：先掃前 10,000 筆','保守：先掃前 50,000 筆'], ntfsHelp:'救援數量太少時請用「標準」；它會先讀取 $MFT 大小估算總紀錄數，而不是固定只掃一小段。',
+  diskPick:'建立映像檔（建議） <span style="font-weight:400;color:var(--muted)">— 實體磁碟不可直接掃描</span>', detecting:'— 正在偵測... —', sourcePath:'來源映像檔路徑', ntfsDepth:'NTFS 掃描深度', ntfsOptions:['標準：自動估算完整 MFT（建議）','快速：先掃前 10,000 筆','保守：先掃前 50,000 筆'], ntfsHelp:'救援數量太少時請用「標準」；它會先讀取 $MFT 大小估算總紀錄數，而不是固定只掃一小段。',
   outputPath:'還原檔案儲存資料夾 <span class="danger-inline">請勿選來源磁碟</span>', outputHelp:'建議存到桌面、外接硬碟或另一個安全資料夾，避免把新檔案覆蓋到原本要救的磁碟。',
   riskTitle:'🟢 掃描前風險檢查', riskLow:'低風險', riskInitial:'<strong>唯讀掃描。</strong> 開始前會檢查來源、格式與輸出位置，降低覆蓋原資料的風險。', riskRecommendation:'建議：救回檔案存到另一顆磁碟',
   imageWorkflowTitle:'🧊 v1.9 映像檔優先 + ddrescue map', imageWorkflowBadge:'建議流程', imageWorkflowSummary:'如果來源是實體磁碟，建議先建立唯讀映像檔，再用 ddrescue map 報告確認壞區/未完成比例，最後才掃描 .img。', imageWorkflowCommand:'選擇來源後會產生成像、map 視覺化、驗證與 retry 指令。', copyImageWorkflowCommand:'複製成像 / map / retry 指令',
@@ -940,6 +940,7 @@ const state = { report:{}, entries:[], selected:null, selectedIds:new Set(), las
 const $ = id => document.getElementById(id);
 const $$ = sel => Array.from(document.querySelectorAll(sel));
 const getTauri = () => window.__TAURI__ || null;
+const isRawDevicePath = value => /^\/dev\//.test(value) || /^\\\\\.\\/.test(value);
 const scanButtons = () => [$('runRealScan'), $('runRealScanTop')].filter(Boolean);
 const extractButtons = () => [$('runRealExtract'), $('ctaBtn')].filter(Boolean);
 const supportedLocales = Object.keys(I18N);
@@ -1804,9 +1805,12 @@ function hideRecoveryReport(){ $('recoveryDrawer')?.classList.remove('show'); }
 
 function updatePrimaryActions(){
   const scanVisible = hasTauriRuntime && wizStep===1;
+  const source=($('sourcePath')?.value || '').trim();
+  const sourceReady=Boolean(source) && !isRawDevicePath(source) && !source.startsWith('fixtures/');
   scanButtons().forEach(btn=>{
     btn.style.display = scanVisible ? 'inline-flex' : 'none';
     btn.disabled = false;
+    if(btn.id==='runRealScanTop') btn.textContent=tr(sourceReady?'startScan':'chooseImage');
   });
   const filesCount = selectedFiles().length;
   const canExtract = hasTauriRuntime && wizStep===3 && filesCount>0;
@@ -1998,6 +2002,12 @@ async function loadPartitions(){
   const sel=$('partitionSel');
   const source=($('sourcePath')?.value || '').trim();
   if(!core || !group || !sel || !source) return;
+  if(isRawDevicePath(source)){
+    detectedPartitions=[];
+    selectedPartitionOffset=0;
+    sel.innerHTML='<option value="0">請先建立唯讀映像檔，再選擇 .img</option>';
+    return;
+  }
   sel.innerHTML='<option value="0">— 偵測分割區中... —</option>';
   selectedPartitionOffset=0;
   try{
@@ -2043,7 +2053,18 @@ function applyDiskFilter(){
     sel.value=prev;
   } else {
     const pref=list.find(d=>d.removable)||list[0];
-    if(pref){sel.value=pref.path;$('sourcePath').value=pref.path;loadPartitions();renderCommand();renderRiskPanel();}
+    if(pref){
+      sel.value=pref.path;
+      if(isRawDevicePath(pref.path)){
+        $('sourcePath').value='';
+        selectedPartitionOffset=0;
+        setAS('已偵測到實體磁碟。請先建立唯讀映像檔，再選擇 .img。','error');
+      } else {
+        $('sourcePath').value=pref.path;
+        loadPartitions();
+      }
+      renderCommand();renderRiskPanel();updatePrimaryActions();
+    }
   }
   renderRiskPanel();
 }
@@ -2438,7 +2459,15 @@ $('copyCommand').addEventListener('click',async()=>{
   }catch(err){setAS(`複製失敗：${err}`,'error');alert('複製失敗：\n'+err);}
 });
 
-$('sourcePath').addEventListener('input',()=>{ renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); });
+$('sourcePath').addEventListener('input',()=>{
+  const source=$('sourcePath').value.trim();
+  if(isRawDevicePath(source)){
+    detectedPartitions=[];
+    selectedPartitionOffset=0;
+    setAS('實體磁碟不可直接掃描，請先建立唯讀映像檔。','error');
+  }
+  renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); updatePrimaryActions();
+});
 $('sourcePath').addEventListener('change',loadPartitions);
 $('outputPath').addEventListener('input',()=>{ const p=outputDirProblem(); setAS(p,p?'error':''); renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); });
 $('ntfsScanProfile')?.addEventListener('change',()=>{ renderCommand(); renderRiskPanel(); setAS($('ntfsScanProfile').value==='auto'?'NTFS 將自動估算完整 MFT 筆數。':'已切換 NTFS 掃描深度。',''); });
@@ -2453,6 +2482,13 @@ function autoModeFromFs(fsType){
 $('diskSel').addEventListener('change',()=>{
   const v=$('diskSel').value;
   if(!v) return;
+  if(isRawDevicePath(v)){
+    $('sourcePath').value='';
+    selectedPartitionOffset=0;
+    setAS('已選擇實體磁碟。請先建立唯讀映像檔，再選擇 .img。','error');
+    renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); updatePrimaryActions();
+    return;
+  }
   $('sourcePath').value=v;
   const disk=allDisks.find(d=>d.path===v);
   if(disk){
@@ -2485,7 +2521,19 @@ $('browseSource').addEventListener('click',async()=>{
   const d=tauriAPI('dialog');if(!d)return;
   try{
     const sel=await d.open({title:'選擇來源磁碟映像或設備',multiple:false});
-    if(sel){$('sourcePath').value=Array.isArray(sel)?sel[0]:sel;loadPartitions();renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();setAS('已選擇來源路徑。','ok');}
+    if(sel){
+      const chosen=Array.isArray(sel)?sel[0]:sel;
+      if(isRawDevicePath(chosen)){
+        $('sourcePath').value='';
+        selectedPartitionOffset=0;
+        setAS('實體磁碟不可直接掃描，請先建立唯讀映像檔。','error');
+      } else {
+        $('sourcePath').value=chosen;
+        loadPartitions();
+        setAS('已選擇來源映像檔。','ok');
+      }
+      renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();updatePrimaryActions();
+    }
   }catch(err){setAS(`選擇失敗：${err}`,'error');alert('選擇失敗：\n'+err);}
 });
 $('browseOutput').addEventListener('click',async()=>{
@@ -2505,10 +2553,17 @@ function ntfsScanCount(){
 
 async function doScan(){
   const core=tauriAPI('core');if(!core)return;
-  const dv=$('diskSel')?.value;if(dv)$('sourcePath').value=dv;
   const fp=$('sourcePath').value.trim();
   renderRiskPanel();
-  if(!fp){ alert('請先選擇要掃描的磁碟。'); return; }
+  if(!fp || fp.startsWith('fixtures/')){
+    $('browseSource')?.click();
+    return;
+  }
+  if(isRawDevicePath(fp)){
+    setAS('實體磁碟不可直接掃描，請先建立唯讀映像檔。','error');
+    alert('為保護原始磁碟，請先用 ddrescue 或 hdiutil 建立映像檔，再選擇 .img。');
+    return;
+  }
   if(!confirmRiskBeforeScan()) return;
   const btns=scanButtons();
   const orig=btns.map(b=>[b,b.textContent]);

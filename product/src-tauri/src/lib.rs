@@ -1507,47 +1507,99 @@ fn validate_report_open_target(path: &std::path::Path) -> Result<PathBuf, String
 }
 
 #[cfg(target_os = "macos")]
-fn list_disks_impl() -> Result<Vec<DiskInfo>, String> {
-    let list_out = std::process::Command::new("diskutil")
-        .args(["list"])
+fn diskutil_list_json() -> Result<serde_json::Value, String> {
+    let plist = std::process::Command::new("diskutil")
+        .args(["list", "-plist"])
         .output()
-        .map_err(|e| format!("無法執行 diskutil list：{}", e))?;
+        .map_err(|e| format!("無法執行 diskutil list -plist：{}", e))?;
+    if !plist.status.success() {
+        return Err(format!(
+            "diskutil list -plist 失敗：{}",
+            String::from_utf8_lossy(&plist.stderr).trim()
+        ));
+    }
 
-    let list_text = String::from_utf8_lossy(&list_out.stdout).into_owned();
-    let mut partition_ids: Vec<(String, bool)> = Vec::new();
-    let mut cur_ext = false;
-    let mut cur_skip = false;
+    let json = std::process::Command::new("plutil")
+        .args(["-convert", "json", "-o", "-", "-"])
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .and_then(|mut child| {
+            use std::io::Write;
+            if let Some(stdin) = child.stdin.as_mut() {
+                stdin.write_all(&plist.stdout)?;
+            }
+            child.wait_with_output()
+        })
+        .map_err(|e| format!("無法將 diskutil plist 轉成 JSON：{}", e))?;
+    if !json.status.success() {
+        return Err(format!(
+            "plutil JSON 轉換失敗：{}",
+            String::from_utf8_lossy(&json.stderr).trim()
+        ));
+    }
+    serde_json::from_slice(&json.stdout).map_err(|e| format!("diskutil plist JSON 無法解析：{}", e))
+}
 
-    for line in list_text.lines() {
-        if line.starts_with("/dev/disk") {
-            cur_ext = line.contains("external");
-            cur_skip = line.contains("synthesized") || line.contains("disk image");
-        } else if !cur_skip {
-            let t = line.trim();
-            if t.is_empty() {
+#[cfg(target_os = "macos")]
+fn diskutil_partition_ids(value: &serde_json::Value) -> Vec<(String, bool)> {
+    let mut result = Vec::new();
+    let Some(disks) = value
+        .get("AllDisksAndPartitions")
+        .and_then(serde_json::Value::as_array)
+    else {
+        return result;
+    };
+    for disk in disks {
+        let removable = disk
+            .get("Removable")
+            .and_then(serde_json::Value::as_bool)
+            .unwrap_or(false)
+            || disk
+                .get("WholeDisk")
+                .and_then(serde_json::Value::as_bool)
+                .unwrap_or(false)
+                && disk
+                    .get("OSInternal")
+                    .and_then(serde_json::Value::as_bool)
+                    .map(|internal| !internal)
+                    .unwrap_or(false);
+        let Some(partitions) = disk.get("Partitions").and_then(serde_json::Value::as_array) else {
+            continue;
+        };
+        for partition in partitions {
+            let Some(id) = partition
+                .get("DeviceIdentifier")
+                .and_then(serde_json::Value::as_str)
+            else {
+                continue;
+            };
+            let content = partition
+                .get("Content")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("")
+                .to_ascii_lowercase();
+            if !id.starts_with("disk")
+                || !id.contains('s')
+                || content.contains("efi")
+                || content.contains("recovery")
+                || content.contains("apple_boot")
+                || content.contains("apple_apfs_isc")
+            {
                 continue;
             }
-            if let Some(colon) = t.find(':') {
-                let row_num: i32 = t[..colon].trim().parse().unwrap_or(-1);
-                if row_num > 0 {
-                    let rest_lower = t[colon + 1..].trim().to_lowercase();
-                    if rest_lower.contains("efi")
-                        || rest_lower.contains("apple_apfs_isc")
-                        || rest_lower.contains("apple_boot")
-                        || rest_lower.contains("_recovery")
-                    {
-                        continue;
-                    }
-                    let tokens: Vec<&str> = t[colon + 1..].split_whitespace().collect();
-                    if let Some(&id) = tokens.last() {
-                        if id.starts_with("disk") && id.contains('s') {
-                            partition_ids.push((id.to_string(), cur_ext));
-                        }
-                    }
-                }
-            }
+            result.push((id.to_string(), removable));
         }
     }
+    result
+}
+
+#[cfg(target_os = "macos")]
+fn list_disks_impl() -> Result<Vec<DiskInfo>, String> {
+    let partition_ids = diskutil_partition_ids(&diskutil_list_json()?)
+        .into_iter()
+        .collect::<Vec<_>>();
 
     let mut disks: Vec<DiskInfo> = Vec::new();
     for (id, is_ext) in partition_ids {

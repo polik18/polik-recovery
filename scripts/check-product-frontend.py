@@ -40,6 +40,10 @@ def main() -> int:
         errors.append("desktop script-src must not allow unsafe-inline")
 
     html = FRONTEND.read_text(encoding="utf-8")
+    if not re.search(r"if\s*\(\s*isRawDevicePath\(fp\)\s*\)", html):
+        errors.append("desktop scan path must reject raw-device paths before run_recovery_scan")
+    if "isRawDevicePath" not in html or "run_recovery_scan" not in html:
+        errors.append("desktop frontend raw-device safety contract is incomplete")
     scripts = re.findall(r"<script(?:\s[^>]*)?>(.*?)</script>", html, flags=re.I | re.S)
     if len(scripts) != 1:
         errors.append(f"expected exactly one inline desktop script, found {len(scripts)}")
