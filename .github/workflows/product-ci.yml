@@ -89,6 +89,9 @@ jobs:
       - name: Build debug CLI for confined synthetic quality gates
         run: cargo build --locked -p polik-recovery-cli
 
+      - name: Run carver benchmark negative corpus gate
+        run: python3 tools/bench/run_carver_bench.py --enforce-random-zero
+
       - name: Run synthetic recovery quality gates
         run: |
           python3 tools/quality/run_quality_gate.py

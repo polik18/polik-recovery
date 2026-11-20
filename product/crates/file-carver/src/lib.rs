@@ -340,9 +340,9 @@ pub fn validate_carved_bytes(file_type: &str, data: &[u8]) -> FormatValidation {
             FormatValidation {
                 ok,
                 extension: "jpg",
-                confidence: if ok { 0.94 } else { 0.30 },
+                confidence: if ok { 0.88 } else { 0.20 },
                 label: if ok {
-                    "JPEG marker、尺寸與 SOS/EOI 驗證通過"
+                    "JPEG quantization/Huffman、尺寸、SOS/entropy/EOI 驗證通過"
                 } else {
                     "JPEG marker 結構不完整"
                 },
@@ -509,71 +509,226 @@ fn valid_png_crc_bytes(data: &[u8]) -> bool {
     false
 }
 
+#[derive(Debug)]
+struct JpegFrame {
+    marker: u8,
+    components: Vec<(u8, u8, u8)>,
+}
+
+fn jpeg_segment(data: &[u8], length_pos: usize) -> Option<&[u8]> {
+    let length = u16::from_be_bytes([*data.get(length_pos)?, *data.get(length_pos + 1)?]) as usize;
+    if length < 2 {
+        return None;
+    }
+    let end = length_pos.checked_add(length)?;
+    data.get(length_pos + 2..end)
+}
+
+fn valid_jpeg_quantization(payload: &[u8]) -> bool {
+    let mut pos = 0usize;
+    let mut tables = 0usize;
+    while pos < payload.len() {
+        let info = payload[pos];
+        let precision = info >> 4;
+        let table_id = info & 0x0F;
+        if table_id > 3 || precision > 1 {
+            return false;
+        }
+        let value_bytes = if precision == 0 { 64 } else { 128 };
+        let end = match pos.checked_add(1 + value_bytes) {
+            Some(end) => end,
+            None => return false,
+        };
+        let values = match payload.get(pos + 1..end) {
+            Some(values) => values,
+            None => return false,
+        };
+        if precision == 0 {
+            if values.contains(&0) {
+                return false;
+            }
+        } else if values
+            .chunks_exact(2)
+            .any(|value| u16::from_be_bytes([value[0], value[1]]) == 0)
+        {
+            return false;
+        }
+        tables += 1;
+        pos = end;
+    }
+    tables > 0
+}
+
+fn valid_jpeg_huffman(payload: &[u8]) -> bool {
+    let mut pos = 0usize;
+    let mut tables = 0usize;
+    while pos < payload.len() {
+        let info = payload[pos];
+        let table_class = info >> 4;
+        let table_id = info & 0x0F;
+        if table_class > 1 || table_id > 3 || pos + 17 > payload.len() {
+            return false;
+        }
+        let counts = &payload[pos + 1..pos + 17];
+        let symbol_count = counts.iter().map(|&count| count as usize).sum::<usize>();
+        if symbol_count == 0 || symbol_count > 256 {
+            return false;
+        }
+        let end = match pos.checked_add(17 + symbol_count) {
+            Some(end) => end,
+            None => return false,
+        };
+        if end > payload.len() {
+            return false;
+        }
+        tables += 1;
+        pos = end;
+    }
+    tables > 0
+}
+
 fn valid_jpeg_bytes_strict(data: &[u8]) -> bool {
-    if data.len() < 64 || !data.starts_with(b"\xff\xd8\xff") || !data.ends_with(b"\xff\xd9") {
+    if data.len() < 64 || !data.starts_with(b"\xff\xd8") || !data.ends_with(b"\xff\xd9") {
         return false;
     }
+
     let mut pos = 2usize;
-    let mut seen_sof = false;
-    let seen_sos = false;
-    let mut seen_dqt = false;
     let mut segments = 0usize;
-    while pos + 1 < data.len() && segments < 1024 {
-        while pos < data.len() && data[pos] != 0xff {
-            pos += 1;
-        }
-        if pos + 1 >= data.len() {
+    let mut seen_dqt = false;
+    let mut seen_dht = false;
+    let mut frame: Option<JpegFrame> = None;
+
+    while pos < data.len() && segments < 1024 {
+        if data[pos] != 0xFF {
             return false;
         }
-        while pos + 1 < data.len() && data[pos + 1] == 0xff {
+        while pos < data.len() && data[pos] == 0xFF {
             pos += 1;
         }
-        if pos + 1 >= data.len() {
+        let Some(&marker) = data.get(pos) else {
             return false;
-        }
-        let marker = data[pos + 1];
+        };
+        pos += 1;
         segments += 1;
+
         match marker {
-            0xD8 | 0x01 | 0xD0..=0xD7 => pos += 2,
-            0xD9 => return seen_sof && seen_sos,
             0xDA => {
-                if pos + 4 > data.len() {
+                let Some(payload) = jpeg_segment(data, pos) else {
+                    return false;
+                };
+                let Some(current_frame) = frame.as_ref() else {
+                    return false;
+                };
+                let Some(&component_count_byte) = payload.first() else {
+                    return false;
+                };
+                let component_count = component_count_byte as usize;
+                if !(1..=4).contains(&component_count) || payload.len() != 4 + component_count * 2 {
                     return false;
                 }
-                let seg_len = u16::from_be_bytes([data[pos + 2], data[pos + 3]]) as usize;
-                if seg_len < 2 || pos + 2 + seg_len > data.len() {
+                for component in payload[1..1 + component_count * 2].chunks_exact(2) {
+                    let id = component[0];
+                    let selectors = component[1];
+                    if !current_frame.components.iter().any(|item| item.0 == id)
+                        || selectors >> 4 > 3
+                        || selectors & 0x0F > 3
+                    {
+                        return false;
+                    }
+                }
+                let spectral_start = payload[1 + component_count * 2];
+                let spectral_end = payload[2 + component_count * 2];
+                let successive = payload[3 + component_count * 2];
+                let baseline = matches!(current_frame.marker, 0xC0 | 0xC1);
+                if baseline {
+                    if spectral_start != 0 || spectral_end != 63 || successive != 0 {
+                        return false;
+                    }
+                } else if spectral_start > spectral_end
+                    || spectral_end > 63
+                    || successive >> 4 > 13
+                    || successive & 0x0F > 13
+                {
                     return false;
                 }
-                // Entropy-coded data runs until EOI. We only accept if the carved buffer ends at that EOI.
-                return seen_sof && data.ends_with(b"\xff\xd9");
+
+                let mut entropy = pos + payload.len() + 2;
+                while entropy + 1 < data.len() {
+                    if data[entropy] != 0xFF {
+                        entropy += 1;
+                        continue;
+                    }
+                    entropy += 1;
+                    while entropy < data.len() && data[entropy] == 0xFF {
+                        entropy += 1;
+                    }
+                    let Some(&entropy_marker) = data.get(entropy) else {
+                        return false;
+                    };
+                    match entropy_marker {
+                        0x00 | 0xD0..=0xD7 => entropy += 1,
+                        0xD9 => {
+                            return entropy + 1 == data.len() && seen_dqt && (seen_dht || baseline);
+                        }
+                        _ => return false,
+                    }
+                }
+                return false;
             }
+            0xD8 | 0xD9 | 0x01 | 0xD0..=0xD7 => return false,
             _ => {
-                if pos + 4 > data.len() {
+                let Some(payload) = jpeg_segment(data, pos) else {
                     return false;
-                }
-                let seg_len = u16::from_be_bytes([data[pos + 2], data[pos + 3]]) as usize;
-                if seg_len < 2 || pos + 2 + seg_len > data.len() {
-                    return false;
-                }
+                };
                 if marker == 0xDB {
+                    if !valid_jpeg_quantization(payload) {
+                        return false;
+                    }
                     seen_dqt = true;
-                }
-                if is_jpeg_sof(marker) {
-                    if seg_len < 7 {
+                } else if marker == 0xC4 {
+                    if !valid_jpeg_huffman(payload) {
                         return false;
                     }
-                    let height = u16::from_be_bytes([data[pos + 5], data[pos + 6]]);
-                    let width = u16::from_be_bytes([data[pos + 7], data[pos + 8]]);
-                    if width == 0 || height == 0 {
+                    seen_dht = true;
+                } else if is_jpeg_sof(marker) {
+                    if frame.is_some() || payload.len() < 6 {
                         return false;
                     }
-                    seen_sof = true;
+                    let precision = payload[0];
+                    let height = u16::from_be_bytes([payload[1], payload[2]]);
+                    let width = u16::from_be_bytes([payload[3], payload[4]]);
+                    let component_count = payload[5] as usize;
+                    if !matches!(precision, 8 | 12)
+                        || width == 0
+                        || height == 0
+                        || !matches!(component_count, 1 | 3 | 4)
+                        || payload.len() != 6 + component_count * 3
+                    {
+                        return false;
+                    }
+                    let mut components = Vec::with_capacity(component_count);
+                    for component in payload[6..].chunks_exact(3) {
+                        let id = component[0];
+                        let sampling = component[1];
+                        let h = sampling >> 4;
+                        let v = sampling & 0x0F;
+                        if id == 0
+                            || components.iter().any(|item: &(u8, u8, u8)| item.0 == id)
+                            || !(1..=4).contains(&h)
+                            || !(1..=4).contains(&v)
+                            || component[2] > 3
+                        {
+                            return false;
+                        }
+                        components.push((id, h, v));
+                    }
+                    frame = Some(JpegFrame { marker, components });
                 }
-                pos += 2 + seg_len;
+                pos += payload.len() + 2;
             }
         }
     }
-    seen_sof && seen_sos && (seen_dqt || data.len() > 1024)
+    false
 }
 
 fn parse_startxref_value(data: &[u8], startxref_pos: usize) -> Option<usize> {
@@ -1451,6 +1606,15 @@ mod tests {
         assert_eq!(carved[0].file_type, "JPEG");
         assert_eq!(carved[0].offset, start as u64);
         assert_eq!(carved[0].length, (pos - start) as u64);
+    }
+
+    #[test]
+    fn rejects_jpeg_signature_in_random_bytes() {
+        let mut data = vec![0xA5; 256];
+        data[..3].copy_from_slice(b"\xFF\xD8\xFF");
+        data[254..].copy_from_slice(b"\xFF\xD9");
+
+        assert!(!valid_jpeg_bytes_strict(&data));
     }
 
     #[test]

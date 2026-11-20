@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 7,
-  "updated_at": "2026-11-20T23:12:50+08:00",
+  "revision": 9,
+  "updated_at": "2026-11-20T23:18:03+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -53,7 +53,7 @@
       "depends_on": [
         "S1"
       ],
-      "status": "done",
+      "status": "in_progress",
       "owner": "codex",
       "branch": "wp/S2-product-ci",
       "started_at": "2026-11-20T23:07:20+08:00",
@@ -75,7 +75,7 @@
       "title": "建立效能與誤判基準（bench + 負樣本 corpus）",
       "priority": "P0",
       "depends_on": [],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/S3-carver-bench",
       "started_at": "2026-11-20T23:09:16+08:00",
@@ -85,10 +85,11 @@
       "evidence": [
         "python3 tools/bench/run_carver_bench.py：成功產生並執行 zero256、random256、pk_dense64、ftyp_dense64 四類映像，輸出 target/bench/carver-bench.json。",
         "基線結果：zero carved=0、random carved=9、PK-dense carved=0／13.12 MiB/s／peak RSS 134791168 bytes、ftyp-dense carved=0／145.84 MiB/s／peak RSS 134791168 bytes。",
+        "C1 修正後 python3 tools/bench/run_carver_bench.py --enforce-random-zero：random carved=0，硬門禁通過；zero/PK/ftyp carved 皆為 0。",
         "cargo fmt --manifest-path tools/bench/Cargo.toml -- --check、python3 -m py_compile tools/bench/run_carver_bench.py、git diff --check：全部通過。"
       ],
       "notes": [
-        "random 負樣本目前重現 9 個 JPEG 誤判，符合待辦 C1 的問題證據；--enforce-random-zero 硬門禁待 C1 修正後接入 Product CI，未把已知失敗誤報為通過。"
+        "C1 完成後已將 --enforce-random-zero 接入 Product CI；初始 9 個 JPEG 誤判與修正後 0 誤判均有 runner 證據。"
       ]
     },
     {
@@ -116,15 +117,23 @@
       "depends_on": [
         "S3"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/C1-jpeg-false-positive",
+      "started_at": "2026-11-20T23:16:40+08:00",
+      "finished_at": "2026-11-20T23:18:03+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "cargo test --locked -p data_recovery_file_carver：5 unit tests、3 format_validation tests、doc-tests 全部通過；新增 rejects_jpeg_signature_in_random_bytes 通過。",
+        "python3 tools/bench/run_carver_bench.py --enforce-random-zero：四類映像執行成功，random carved=0。",
+        "cargo test --workspace --locked --no-fail-fast、cargo clippy --workspace --all-targets --locked -- -D warnings、cargo fmt --all -- --check：全部通過。",
+        "python3 tools/quality/run_quality_gate.py：PASS，found ratio 75.0%、high-confidence usable 100%、false positives 0。",
+        "python3 scripts/check-product-security.py、python3 scripts/check-product-frontend.py、workflow YAML parse、git diff --check：全部通過。"
+      ],
+      "notes": [
+        "JPEG 驗證現在要求 DQT、DHT 或 baseline 例外、合法 SOF 尺寸/元件/取樣、SOS 元件對應與 entropy FF 規則；有效檔案信心為 0.88，不再以 marker-only 給 0.94。"
+      ]
     },
     {
       "id": "C2",
