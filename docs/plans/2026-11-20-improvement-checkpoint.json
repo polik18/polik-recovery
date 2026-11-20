@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 11,
-  "updated_at": "2026-11-20T23:21:24+08:00",
+  "revision": 13,
+  "updated_at": "2026-11-20T23:24:07+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -142,15 +142,21 @@
       "depends_on": [
         "S3"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/C2-carver-nonoverlap",
+      "started_at": "2026-11-20T23:22:19+08:00",
+      "finished_at": "2026-11-20T23:24:07+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "cargo test --locked -p data_recovery_file_carver：6 unit tests、3 format_validation tests、doc-tests 全部通過，含 discards_overlapping_carved_ranges。",
+        "cargo fmt --all -- --check、cargo test --workspace --locked --no-fail-fast、cargo clippy --workspace --all-targets --locked -- -D warnings、git diff --check：全部通過。",
+        "python3 tools/bench/run_carver_bench.py --enforce-random-zero：四類映像成功執行，random carved=0；PK-dense carved=0。"
+      ],
+      "notes": [
+        "carve_source 維護跨 chunk next_scan_offset，接受候選後跳過其完整範圍；finalize_carved_files 依 offset/長度排序並丟棄重疊區段與重複 hash。"
+      ]
     },
     {
       "id": "C3",
