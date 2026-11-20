@@ -123,6 +123,16 @@ struct ScanProgressPayload {
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+struct CarvedFileProgressPayload {
+    file_type: String,
+    offset: u64,
+    length: u64,
+    sha256: String,
+    confidence: f32,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct ExtractProgressPayload {
     pct: u8,
     done: usize,
@@ -2672,7 +2682,7 @@ fn perform_scan(
                 &format!("正在深度掃描 {} MB；找到候選片段前無可靠百分比…", size_mb),
             );
             let config = data_recovery_file_carver::CarverConfig::default();
-            let carve_report = data_recovery_file_carver::carve_source_with_callback(
+            let carve_report = data_recovery_file_carver::carve_source_with_callbacks(
                 &source,
                 &config,
                 |progress| {
@@ -2690,6 +2700,26 @@ fn perform_scan(
                         progress.files_found,
                         "正在深度掃描檔案特徵碼...",
                     );
+                    if operation_cancelled() {
+                        ControlFlow::Break(())
+                    } else {
+                        ControlFlow::Continue(())
+                    }
+                },
+                |file| {
+                    if let Some(app) = notify {
+                        app.emit(
+                            "scan-carved-file",
+                            CarvedFileProgressPayload {
+                                file_type: file.file_type,
+                                offset: file.offset,
+                                length: file.length,
+                                sha256: file.sha256,
+                                confidence: file.confidence,
+                            },
+                        )
+                        .ok();
+                    }
                     if operation_cancelled() {
                         ControlFlow::Break(())
                     } else {
@@ -4828,8 +4858,8 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        check_output_isolation, get_scan_page, open_source, prepare_scan_response,
-        validate_report_open_target, ScanEntryPayload, ScanResponse,
+        ScanEntryPayload, ScanResponse, check_output_isolation, get_scan_page, open_source,
+        prepare_scan_response, validate_report_open_target,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};

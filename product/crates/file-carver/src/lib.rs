@@ -67,7 +67,7 @@ pub fn carve_source_with_report<S: BlockSource + ?Sized>(
     config: &CarverConfig,
 ) -> Result<CarveReport, ReadError> {
     let tracked = TrackingSource::new(source);
-    let carved_files = carve_source_impl(&tracked, config, None)?.0;
+    let carved_files = carve_source_impl(&tracked, config, None, None)?.0;
     Ok(CarveReport {
         carved_files,
         unreadable_ranges: tracked.unreadable_ranges(),
@@ -85,7 +85,34 @@ where
     F: FnMut(CarveProgress) -> ControlFlow<()>,
 {
     let tracked = TrackingSource::new(source);
-    let (carved_files, cancelled) = carve_source_impl(&tracked, config, Some(&mut callback))?;
+    let (carved_files, cancelled) = carve_source_impl(&tracked, config, Some(&mut callback), None)?;
+    Ok(CarveReport {
+        carved_files,
+        unreadable_ranges: tracked.unreadable_ranges(),
+        cancelled,
+    })
+}
+
+/// Scans a source while streaming progress and each accepted carved file to the caller.
+/// The file callback runs before the next chunk is read and may stop the scan.
+pub fn carve_source_with_callbacks<S, P, F>(
+    source: &S,
+    config: &CarverConfig,
+    mut progress_callback: P,
+    mut file_callback: F,
+) -> Result<CarveReport, ReadError>
+where
+    S: BlockSource + ?Sized,
+    P: FnMut(CarveProgress) -> ControlFlow<()>,
+    F: FnMut(CarvedFile) -> ControlFlow<()>,
+{
+    let tracked = TrackingSource::new(source);
+    let (carved_files, cancelled) = carve_source_impl(
+        &tracked,
+        config,
+        Some(&mut progress_callback),
+        Some(&mut file_callback),
+    )?;
     Ok(CarveReport {
         carved_files,
         unreadable_ranges: tracked.unreadable_ranges(),
@@ -96,9 +123,11 @@ where
 fn carve_source_impl<S: BlockSource + ?Sized>(
     source: &S,
     config: &CarverConfig,
-    mut callback: Option<&mut dyn FnMut(CarveProgress) -> ControlFlow<()>>,
+    mut progress_callback: Option<&mut dyn FnMut(CarveProgress) -> ControlFlow<()>>,
+    mut file_callback: Option<&mut dyn FnMut(CarvedFile) -> ControlFlow<()>>,
 ) -> Result<(Vec<CarvedFile>, bool), ReadError> {
     let mut files = Vec::new();
+    let mut seen_hashes = std::collections::HashSet::new();
     let mut next_scan_offset = 0_u64;
     let size_bytes = source.size_bytes();
     let mut offset = 0u64;
@@ -127,7 +156,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
         }
         let buf = &buf[..read_res.bytes_read];
 
-        if let Some(callback) = callback.as_mut() {
+        if let Some(callback) = progress_callback.as_mut() {
             if callback(CarveProgress {
                 scanned_bytes: offset.saturating_add(read_res.bytes_read as u64),
                 total_bytes: size_bytes,
@@ -159,9 +188,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                     if let Ok(file_data) = read_file_data(source, abs_pos, len) {
                         let validation = validate_carved_bytes("PNG", &file_data);
                         if !is_mostly_padding(&file_data) && validation.ok {
-                            record_carved_file(
+                            if record_carved_file(
                                 &mut files,
                                 &mut next_scan_offset,
+                                &mut seen_hashes,
+                                &mut file_callback,
                                 CarvedFile {
                                     file_type: "PNG".to_string(),
                                     offset: abs_pos,
@@ -169,7 +200,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                                     sha256: sha256_hex(&file_data),
                                     confidence: validation.confidence,
                                 },
-                            );
+                            )
+                            .is_break()
+                            {
+                                return Ok((finalize_carved_files(files), true));
+                            }
                             i += len as usize;
                             continue;
                         }
@@ -183,9 +218,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                     if let Ok(file_data) = read_file_data(source, abs_pos, len) {
                         let validation = validate_carved_bytes("JPEG", &file_data);
                         if !is_mostly_padding(&file_data) && validation.ok {
-                            record_carved_file(
+                            if record_carved_file(
                                 &mut files,
                                 &mut next_scan_offset,
+                                &mut seen_hashes,
+                                &mut file_callback,
                                 CarvedFile {
                                     file_type: "JPEG".to_string(),
                                     offset: abs_pos,
@@ -193,7 +230,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                                     sha256: sha256_hex(&file_data),
                                     confidence: conf.min(validation.confidence),
                                 },
-                            );
+                            )
+                            .is_break()
+                            {
+                                return Ok((finalize_carved_files(files), true));
+                            }
                             i += len as usize;
                             continue;
                         }
@@ -207,9 +248,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                     if let Ok(file_data) = read_file_data(source, abs_pos, len) {
                         let validation = validate_carved_bytes("PDF", &file_data);
                         if !is_mostly_padding(&file_data) && validation.ok {
-                            record_carved_file(
+                            if record_carved_file(
                                 &mut files,
                                 &mut next_scan_offset,
+                                &mut seen_hashes,
+                                &mut file_callback,
                                 CarvedFile {
                                     file_type: "PDF".to_string(),
                                     offset: abs_pos,
@@ -217,7 +260,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                                     sha256: sha256_hex(&file_data),
                                     confidence: conf.min(validation.confidence),
                                 },
-                            );
+                            )
+                            .is_break()
+                            {
+                                return Ok((finalize_carved_files(files), true));
+                            }
                             i += len as usize;
                             continue;
                         }
@@ -230,9 +277,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                 if let Some(candidate) = read_zip_candidate(source, abs_pos, 120 * 1024 * 1024) {
                     let validation = validate_carved_bytes("ZIP", &candidate.bytes);
                     if !is_mostly_padding(&candidate.bytes) && validation.ok {
-                        record_carved_file(
+                        if record_carved_file(
                             &mut files,
                             &mut next_scan_offset,
+                            &mut seen_hashes,
+                            &mut file_callback,
                             CarvedFile {
                                 file_type: "ZIP".to_string(),
                                 offset: abs_pos,
@@ -240,7 +289,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                                 sha256: candidate.sha256,
                                 confidence: validation.confidence,
                             },
-                        );
+                        )
+                        .is_break()
+                        {
+                            return Ok((finalize_carved_files(files), true));
+                        }
                         i += candidate.bytes.len();
                         continue;
                     }
@@ -258,9 +311,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                             } else {
                                 "MP4"
                             };
-                        record_carved_file(
+                        if record_carved_file(
                             &mut files,
                             &mut next_scan_offset,
+                            &mut seen_hashes,
+                            &mut file_callback,
                             CarvedFile {
                                 file_type: file_type.to_string(),
                                 offset: abs_pos,
@@ -268,7 +323,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                                 sha256: candidate.sha256,
                                 confidence: validation.confidence,
                             },
-                        );
+                        )
+                        .is_break()
+                        {
+                            return Ok((finalize_carved_files(files), true));
+                        }
                         i += candidate.bytes.len();
                         continue;
                     }
@@ -281,9 +340,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                     if let Ok(file_data) = read_file_data(source, abs_pos, len) {
                         let validation = validate_carved_bytes("OLE", &file_data);
                         if !is_mostly_padding(&file_data) && validation.ok {
-                            record_carved_file(
+                            if record_carved_file(
                                 &mut files,
                                 &mut next_scan_offset,
+                                &mut seen_hashes,
+                                &mut file_callback,
                                 CarvedFile {
                                     file_type: "OLE".to_string(),
                                     offset: abs_pos,
@@ -291,7 +352,11 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                                     sha256: sha256_hex(&file_data),
                                     confidence: validation.confidence,
                                 },
-                            );
+                            )
+                            .is_break()
+                            {
+                                return Ok((finalize_carved_files(files), true));
+                            }
                             i += len as usize;
                             continue;
                         }
@@ -334,11 +399,24 @@ fn next_signature_offset(buffer: &[u8], start: usize) -> Option<usize> {
     best
 }
 
-fn record_carved_file(files: &mut Vec<CarvedFile>, next_scan_offset: &mut u64, file: CarvedFile) {
+fn record_carved_file(
+    files: &mut Vec<CarvedFile>,
+    next_scan_offset: &mut u64,
+    seen_hashes: &mut std::collections::HashSet<String>,
+    file_callback: &mut Option<&mut dyn FnMut(CarvedFile) -> ControlFlow<()>>,
+    file: CarvedFile,
+) -> ControlFlow<()> {
+    if !seen_hashes.insert(file.sha256.clone()) {
+        return ControlFlow::Continue(());
+    }
     if let Some(end) = file.offset.checked_add(file.length) {
         *next_scan_offset = (*next_scan_offset).max(end);
     }
-    files.push(file);
+    files.push(file.clone());
+    if let Some(callback) = file_callback.as_mut() {
+        return callback(file);
+    }
+    ControlFlow::Continue(())
 }
 
 fn finalize_carved_files(mut files: Vec<CarvedFile>) -> Vec<CarvedFile> {
@@ -1917,6 +1995,38 @@ mod tests {
         assert_eq!(carved[0].file_type, "PNG");
         assert_eq!(carved[0].offset, 100);
         assert_eq!(carved[0].length, (pos - 100) as u64);
+    }
+
+    #[test]
+    fn streams_each_carved_file_before_scan_finishes() {
+        let mut raw_data = vec![0_u8; 1000];
+        raw_data[100..108].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let mut pos = 108;
+        pos = write_png_chunk(
+            &mut raw_data,
+            pos,
+            b"IHDR",
+            &[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0],
+        );
+        pos = write_png_chunk(&mut raw_data, pos, b"IDAT", &[0x78]);
+        write_png_chunk(&mut raw_data, pos, b"IEND", &[]);
+
+        let source = MemBlockSource::new(raw_data);
+        let mut streamed = Vec::new();
+        let report = carve_source_with_callbacks(
+            &source,
+            &CarverConfig::default(),
+            |_| ControlFlow::Continue(()),
+            |file| {
+                streamed.push(file);
+                ControlFlow::Continue(())
+            },
+        )
+        .unwrap();
+
+        assert_eq!(streamed, report.carved_files);
+        assert_eq!(streamed.len(), 1);
+        assert_eq!(streamed[0].offset, 100);
     }
 
     #[test]
