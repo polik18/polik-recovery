@@ -385,6 +385,7 @@ pub fn resolve_image_storage_identities(
     let source = source.as_ref();
     let output = output.as_ref();
     reject_raw_device_path(source)?;
+    reject_output_path_components(output)?;
     let source_path = std::fs::canonicalize(source).map_err(|error| {
         SafeWriterError::StorageIdentityResolution(format!(
             "cannot canonicalize source {}: {error}",
@@ -431,6 +432,7 @@ pub fn resolve_image_storage_identities(
     let source = source.as_ref();
     let output = output.as_ref();
     reject_raw_device_path(source)?;
+    reject_output_path_components(output)?;
     let source_path = std::fs::canonicalize(source).map_err(|error| {
         SafeWriterError::StorageIdentityResolution(format!(
             "cannot canonicalize source {}: {error}",
@@ -957,6 +959,7 @@ fn write_recovered_file_inner(
 ) -> Result<RecoveryManifest, SafeWriterError> {
     let source = source.as_ref();
     let output = output.as_ref();
+    reject_output_path_components(output)?;
     reconcile_recovery_output(output)?;
     validate_output_path(source, output)?;
     let output_name = output.file_name().ok_or_else(|| {
@@ -1190,6 +1193,7 @@ fn write_output_pair(
 }
 
 pub fn validate_output_path(source: &Path, output: &Path) -> Result<(), SafeWriterError> {
+    reject_output_path_components(output)?;
     if source == output {
         return Err(SafeWriterError::OutputEqualsSource);
     }
@@ -1228,6 +1232,48 @@ fn canonical_parent(path: &Path) -> Result<PathBuf, SafeWriterError> {
         .parent()
         .ok_or_else(|| SafeWriterError::MissingOutputParent(path.to_path_buf()))?;
     Ok(std::fs::canonicalize(parent)?)
+}
+
+#[cfg(unix)]
+fn reject_output_path_components(path: &Path) -> Result<(), SafeWriterError> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| SafeWriterError::MissingOutputParent(path.to_path_buf()))?;
+    reject_symlink_components(parent)?;
+
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_type().is_symlink() => Err(
+            SafeWriterError::OutputPathContainsSymlink(path.to_path_buf()),
+        ),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(windows)]
+fn reject_output_path_components(path: &Path) -> Result<(), SafeWriterError> {
+    use std::os::windows::fs::MetadataExt;
+    use windows_sys::Win32::Storage::FileSystem::FILE_ATTRIBUTE_REPARSE_POINT;
+
+    let parent = path
+        .parent()
+        .ok_or_else(|| SafeWriterError::MissingOutputParent(path.to_path_buf()))?;
+    reject_windows_reparse_components(parent)?;
+
+    match std::fs::symlink_metadata(path) {
+        Ok(metadata) if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 => Err(
+            SafeWriterError::OutputPathContainsSymlink(path.to_path_buf()),
+        ),
+        Ok(_) => Ok(()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(error) => Err(error.into()),
+    }
+}
+
+#[cfg(not(any(unix, windows)))]
+fn reject_output_path_components(_path: &Path) -> Result<(), SafeWriterError> {
+    Ok(())
 }
 
 fn validate_output_capacity(output: &Path, data_len: usize) -> Result<(), SafeWriterError> {
@@ -1430,6 +1476,7 @@ fn hash_file(path: &Path) -> Result<(u64, String), SafeWriterError> {
 /// inconsistent state fails closed and leaves every artifact untouched.
 pub fn reconcile_recovery_output(output: impl AsRef<Path>) -> Result<bool, SafeWriterError> {
     let output = output.as_ref();
+    reject_output_path_components(output)?;
     let manifest = manifest_path_for(output);
     let output_partial = partial_path_for(output);
     let manifest_partial = partial_path_for(&manifest);
@@ -2246,6 +2293,64 @@ mod tests {
             other => panic!("expected symlink rejection, got {other:?}"),
         }
         assert!(!real_output_dir.join("report.txt").exists());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_intermediate_output_parent() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir_name();
+        let source_dir = root.join("source");
+        let real_output_dir = root.join("real-output");
+        let linked_parent = root.join("nested").join("linked-output");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::create_dir_all(real_output_dir.join("child")).unwrap();
+        std::fs::create_dir_all(linked_parent.parent().unwrap()).unwrap();
+        symlink(&real_output_dir, &linked_parent).unwrap();
+        let source = source_dir.join("image.bin");
+        let output = linked_parent.join("child").join("report.txt");
+        std::fs::write(&source, b"source").unwrap();
+
+        let result = write_recovered_file(&source, &output, b"must not be written", None);
+        match result {
+            Err(SafeWriterError::OutputPathContainsSymlink(path)) => {
+                assert_eq!(path.file_name(), linked_parent.file_name());
+            }
+            other => panic!("expected symlink rejection, got {other:?}"),
+        }
+        assert!(!real_output_dir.join("child").join("report.txt").exists());
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn rejects_symlinked_output_file() {
+        use std::os::unix::fs::symlink;
+
+        let root = temp_dir_name();
+        let source_dir = root.join("source");
+        let output_dir = root.join("output");
+        let target = output_dir.join("target.txt");
+        let output = output_dir.join("report.txt");
+        std::fs::create_dir_all(&source_dir).unwrap();
+        std::fs::create_dir_all(&output_dir).unwrap();
+        std::fs::write(&target, b"original target").unwrap();
+        symlink(&target, &output).unwrap();
+        let source = source_dir.join("image.bin");
+        std::fs::write(&source, b"source").unwrap();
+
+        let result = write_recovered_file(&source, &output, b"must not be written", None);
+        match result {
+            Err(SafeWriterError::OutputPathContainsSymlink(path)) => {
+                assert_eq!(path, output);
+            }
+            other => panic!("expected symlink rejection, got {other:?}"),
+        }
+        assert_eq!(std::fs::read(&target).unwrap(), b"original target");
 
         std::fs::remove_dir_all(root).unwrap();
     }

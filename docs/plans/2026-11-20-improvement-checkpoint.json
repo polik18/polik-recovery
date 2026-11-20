@@ -1,0 +1,382 @@
+{
+  "schema": "polik-recovery-improvement-checkpoint/v1",
+  "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
+  "base_commit": "2283db2",
+  "revision": 3,
+  "updated_at": "2026-11-20T23:05:48+08:00",
+  "updated_by": "codex",
+  "hot_files_single_owner": [
+    "product/src-tauri/src/lib.rs",
+    "product/apps/desktop-prototype/index.html",
+    "product/crates/file-carver/src/lib.rs"
+  ],
+  "baseline": {
+    "cargo_test": "93 passed / 1 failed (safe-writer::rejects_symlinked_output_parent)",
+    "clippy": "pass",
+    "fmt": "pass",
+    "product_ci": "failing since 2026-10-06 (cargo-deny container action on macos-14)",
+    "carver_bench_mib_s": {
+      "zero256": 294,
+      "random256": 240,
+      "pk_dense64": 12.8,
+      "ftyp_dense64": 135
+    },
+    "carver_false_positives_random256": 11
+  },
+  "work_packages": [
+    {
+      "id": "S1",
+      "title": "修正 symlink 輸出防護回歸",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/S1-symlink-output-guard",
+      "started_at": "2026-11-20T23:02:08+08:00",
+      "finished_at": "2026-11-20T23:05:48+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "cargo fmt --all -- --check：通過。",
+        "cargo test --locked -p data_recovery_safe_writer：24 passed / 0 failed；含 rejects_symlinked_output_parent、rejects_symlinked_intermediate_output_parent、rejects_symlinked_output_file。",
+        "cargo test --workspace --locked --no-fail-fast：所有 workspace unit tests 與 doc-tests 通過；safe-writer 24 passed / 0 failed。",
+        "git diff --check：通過。"
+      ],
+      "notes": [
+        "在輸出路徑任何 canonicalize／reconcile 前檢查原始父層元件與已存在的最後檔名；保留 raw-device source 先拒絕的既有契約。"
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "讓 Product CI 真的會跑而且是綠的",
+      "priority": "P0",
+      "depends_on": [
+        "S1"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "S3",
+      "title": "建立效能與誤判基準（bench + 負樣本 corpus）",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "S4",
+      "title": "文件對齊現況",
+      "priority": "P1",
+      "depends_on": [
+        "S1",
+        "S2"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "C1",
+      "title": "JPEG carving 誤判",
+      "priority": "P0",
+      "depends_on": [
+        "S3"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "C2",
+      "title": "carving 區段不重疊、跨 chunk 正確跳過",
+      "priority": "P1",
+      "depends_on": [
+        "S3"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "C3",
+      "title": "BlockSource 讀取契約（pread、讀滿、去 Mutex）",
+      "priority": "P1",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "C4",
+      "title": "壞區容錯（unreadable_ranges）",
+      "priority": "P1",
+      "depends_on": [
+        "C3"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "C5",
+      "title": "NTFS $MFT 依 data runs 讀取",
+      "priority": "P1",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "C6",
+      "title": "MBR／GPT 自動偵測與 offset",
+      "priority": "P1",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P1",
+      "title": "carver 特徵前置過濾＋小視窗驗證",
+      "priority": "P0",
+      "depends_on": [
+        "S3",
+        "C1"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P2",
+      "title": "carver 串流輸出與並行",
+      "priority": "P1",
+      "depends_on": [
+        "P1",
+        "C3"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P3",
+      "title": "NTFS 批次讀取",
+      "priority": "P2",
+      "depends_on": [
+        "C3",
+        "C5"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P4",
+      "title": "桌面後端不阻塞、分頁回傳、縮圖快取",
+      "priority": "P1",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "P5",
+      "title": "前端清單虛擬化",
+      "priority": "P1",
+      "depends_on": [
+        "P4"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "U1",
+      "title": "主流程改為「映像檔優先」",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "U2",
+      "title": "輸出位置事前檢查",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "U3",
+      "title": "可靠的取消機制（job token）",
+      "priority": "P1",
+      "depends_on": [
+        "P2",
+        "P4"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "U4",
+      "title": "錯誤訊息結構化、移除殘留碼",
+      "priority": "P1",
+      "depends_on": [
+        "U1"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "U5",
+      "title": "拆分巨型檔案",
+      "priority": "P2",
+      "depends_on": [
+        "P4",
+        "U4"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    },
+    {
+      "id": "W1",
+      "title": "網站小修",
+      "priority": "P2",
+      "depends_on": [
+        "S4"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": null,
+      "blockers": [],
+      "evidence": [],
+      "notes": []
+    }
+  ]
+}
