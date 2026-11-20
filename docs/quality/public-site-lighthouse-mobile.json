@@ -1,0 +1,16 @@
+{
+  "url": "http://127.0.0.1:8766/index.html",
+  "scope": "local working tree; not a deployed-site claim",
+  "form_factor": "mobile",
+  "categories": {
+    "performance": 1.0
+  },
+  "score_percent": 100,
+  "lighthouse_version": "13.6.0",
+  "measured_at": "2026-11-21T01:22:21+08:00",
+  "command": "npx --yes lighthouse http://127.0.0.1:8766/index.html --only-categories=performance --output=json --chrome-flags='--headless --no-sandbox --disable-gpu' --quiet",
+  "notes": [
+    "A local Python HTTP server served the repository root; the run does not prove GitHub Pages deployment performance.",
+    "The page still references the site's existing external shell and Google Fonts policy; no network behavior or release artifact claim is inferred from this score."
+  ]
+}

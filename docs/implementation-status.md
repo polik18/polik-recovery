@@ -1,7 +1,7 @@
 # Implementation Status
 
 > Updated: 2026-11-21
-> Working baseline: `wp/P3-ntfs-batched-read@5a3e937`（usability checkpoint revision 35）
+> Working baseline: `wp/U4-structured-errors@2d5c8ef`（usability checkpoint revision 42）
 > Release status: blocked
 
 ## Stage checkpoint
@@ -13,10 +13,10 @@
 | P2 — privileged boundary | `prototype quarantined; redesign pending` | unsafe server/helper modes and CLI raw-read implementations removed; desktop, CLI and file-backed core reject raw-device paths; a signed, authenticated least-privilege helper is not implemented |
 | P3 — physical-device isolation | `regular-image contract implemented` | macOS and Windows callers resolve physical stores and bind live source/output handles; disk-full injection and the valid data/manifest commit-gap reconciliation pass. Raw-device and abrupt-power-loss platform evidence remain blocked |
 | P4 — parser/recovery evidence | `partial` | four deterministic synthetic corpus gates pass and run in CI; independent real-image, malformed-input and broader feature matrices remain |
-| P5 — desktop reliability/security | `in progress` | P4/P5 usability work-package commits add spawn_blocking, structured scan pages, virtualized results and bounded thumbnail concurrency; global Tauri API, inline styles, broader path authority and job-token cancellation remain |
+| P5 — desktop reliability/security | `completed in working tree` | P4/P5 usability commits add spawn_blocking, structured scan pages, virtualized results and bounded thumbnail concurrency; U3 job-token cancellation and U4 structured errors are complete. Public artifact parity remains unverified |
 | P6 — platform validation | `Windows source gate partial` | Windows GNU workspace check/Clippy, 83 non-desktop tests and 4 release-profile desktop linked tests pass; release CLI builds. Formal MSVC, installer, VM matrix, signing and removable-media evidence remain |
 | P7 — release supply chain | `free-only implementation in progress` | deterministic SHA-256/CycloneDX/license/provenance evidence generator and verifier added; manual public-repository GitHub/Sigstore attestation workflow is pinned and refuses private repositories. SignPath acceptance, Authenticode, installer evidence and macOS notarization remain blocked |
-| P8 — website/docs | `first pass completed` | claims, CSP, external JS/CSS, keyboard/ARIA and local validators added; visual/browser audit remains |
+| P8 — website/docs | `maintenance pass completed` | claims, CSP, external JS/CSS, keyboard/ARIA, reduced public font families and local validators are aligned; local Lighthouse mobile evidence is recorded separately from public deployment |
 | P9 — controlled pilot | `not started` | requires P2–P8 product gates |
 
 ## Completed changes
@@ -58,6 +58,7 @@
 - Established a free/open-source Windows validation route with Rust 1.85.1 GNU plus LLVM-MinGW; workspace check and Clippy pass, 83 non-desktop Rust tests plus 4 release-profile desktop linked tests pass, and an optimized CLI is buildable. The GNU debug desktop cdylib still exceeds the PE export limit, while formal MSVC and installer validation remain release gates.
 - Accepted the free-only P7 supply-chain decision; added deterministic release evidence generation and verification for artifact SHA-256, CycloneDX 1.5 SBOM, Cargo license screening, capability snapshot, build metadata and unsigned in-toto/SLSA-formatted provenance.
 - Added a manual, non-publishing Windows evidence workflow pinned to exact action commits. It refuses non-public repositories before build, runs the MSVC source gates, creates a free Sigstore public-good attestation, verifies the evidence bundle and uploads only a short-lived workflow artifact.
+- Updated public site typography from three hosted font families to two (Inter plus JetBrains Mono), aligned the capability matrix with checkpoint 42 and recorded a local Lighthouse mobile performance score of 100 in `docs/quality/public-site-lighthouse-mobile.json`; no main-site redirect was added because that requires owner authorization in another repository.
 
 ## Verification commands
 

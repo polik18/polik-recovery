@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 42,
-  "updated_at": "2026-11-21T02:15:00+08:00",
+  "revision": 43,
+  "updated_at": "2026-11-21T02:30:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -496,15 +496,22 @@
       "depends_on": [
         "S4"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/U4-structured-errors",
+      "started_at": "2026-11-21T02:20:00+08:00",
+      "finished_at": "2026-11-21T02:30:00+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "公開站 Google Fonts 從 Inter／Outfit／JetBrains Mono 三組縮為 Inter／JetBrains Mono 兩組，CSS display font 同步改為 Inter；未修改另一個主站 repo，因此沒有未授權轉址頁。",
+        "docs/capability-matrix.md 與 docs/implementation-status.md 已對齊 checkpoint 42、109 tests、P2/P3/P4/P5/U1/U2/U3/U4 工作狀態，並保留 public artifact 未簽署／未 notarize／未版本一致驗證的限制。",
+        "./scripts/check-public-content.sh、python3 scripts/validate-public-files.py、node --check assets/site.js、JSON parse、git diff --check：全部通過。",
+        "本地 HTTP server + Lighthouse 13.6.0 mobile performance：score=100；完整摘要保存在 docs/quality/public-site-lighthouse-mobile.json，明確標示不代表 GitHub Pages 部署效能。"
+      ],
+      "notes": [
+        "未對 polik18.github.io 主站或其他 repository 做外部發布／轉址 mutation；若要新增 polik-recover/ → polik-recovery/，需另取得 owner 授權。"
+      ]
     }
   ]
 }
