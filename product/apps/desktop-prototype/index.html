@@ -934,6 +934,7 @@ let activeSession = null;
 let outputIsolation = {pending:false, ok:false, message:'尚未完成來源／輸出 physical store 檢查。', sourceStores:[], outputStores:[]};
 let outputIsolationTicket = 0;
 let latestStructuredEntries = null;
+let scanPageTicket = 0;
 // 縮圖快取：Map<entryId, base64String | 'loading' | 'error'>
 const thumbCache = new Map();
 let thumbObserver = null;
@@ -2170,6 +2171,7 @@ function parseVfs(txt){
     });
 }
 function parseInputs(structuredEntries=null){
+  scanPageTicket++;
   thumbCache.clear(); // 新掃描時清除縮圖快取
   if(thumbObserver){ thumbObserver.disconnect(); thumbObserver=null; }
   state.report=parseReport($('reportInput').value);
@@ -2181,6 +2183,28 @@ function parseInputs(structuredEntries=null){
   state.lastSelectedId=state.selected?.id || null;
   if(state.entries.length>0) setStep(3); else setStep(1);
   render();
+}
+
+async function loadRemainingScanPages(firstPage){
+  if(!firstPage?.scanId || firstPage.nextCursor == null) return;
+  const core=getTauri()?.core;
+  if(!core) return;
+  const ticket=++scanPageTicket;
+  const merged=Array.isArray(firstPage.entries) ? firstPage.entries.slice() : [];
+  let cursor=firstPage.nextCursor;
+  try{
+    while(cursor != null){
+      const page=await core.invoke('get_scan_page',{scanId:firstPage.scanId,cursor,limit:500});
+      if(ticket!==scanPageTicket) return;
+      merged.push(...(Array.isArray(page.entries) ? page.entries : []));
+      latestStructuredEntries=merged;
+      state.entries=merged;
+      cursor=page.nextCursor;
+      render();
+    }
+  }catch(err){
+    if(ticket===scanPageTicket) setAS(`後續掃描結果載入失敗：${err}`,'error');
+  }
 }
 
 // ── Filter ──
@@ -2623,7 +2647,7 @@ async function doScan(){
     const scanCount = activeMode==='ntfs' ? ntfsScanCount() : 0;
     const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount});
     $('reportInput').value=res.report;$('vfsInput').value=res.vfs;
-    parseInputs(res.entries);setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
+    parseInputs(res.entries);void loadRemainingScanPages(res);setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
   }catch(err){
     setStep(1);
     if(isUserCancelError(err)){ setAS('已中止掃描。','error'); }

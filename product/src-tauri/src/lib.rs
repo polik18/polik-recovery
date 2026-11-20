@@ -1,7 +1,7 @@
 use data_recovery_core::{BlockSource, FileBlockSource};
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Mutex, OnceLock};
 use tauri::Emitter;
 
@@ -20,6 +20,14 @@ struct ThumbnailCache {
 }
 
 static THUMBNAIL_CACHE: OnceLock<Mutex<ThumbnailCache>> = OnceLock::new();
+static SCAN_RESULT_CACHE: OnceLock<Mutex<HashMap<String, Vec<ScanEntryPayload>>>> = OnceLock::new();
+static SCAN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
+const SCAN_PAGE_SIZE: usize = 500;
+const SCAN_RESULT_CACHE_CAPACITY: usize = 4;
+
+fn scan_result_cache() -> &'static Mutex<HashMap<String, Vec<ScanEntryPayload>>> {
+    SCAN_RESULT_CACHE.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 fn thumbnail_cache() -> &'static Mutex<ThumbnailCache> {
     THUMBNAIL_CACHE.get_or_init(|| {
@@ -122,10 +130,23 @@ struct ExtractProgressPayload {
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct ScanResponse {
     report: String,
     vfs: String,
     entries: Vec<ScanEntryPayload>,
+    scan_id: String,
+    total_entries: usize,
+    next_cursor: Option<usize>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanPageResponse {
+    scan_id: String,
+    entries: Vec<ScanEntryPayload>,
+    total_entries: usize,
+    next_cursor: Option<usize>,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -2060,6 +2081,32 @@ fn structured_entries_from_vfs_text(vfs: &str) -> Vec<ScanEntryPayload> {
         .collect()
 }
 
+fn prepare_scan_response(mut response: ScanResponse) -> ScanResponse {
+    let total_entries = response.entries.len();
+    response.total_entries = total_entries;
+    response.scan_id.clear();
+    response.next_cursor = None;
+
+    if total_entries <= SCAN_PAGE_SIZE {
+        return response;
+    }
+
+    let scan_id = format!("scan-{}", SCAN_SEQUENCE.fetch_add(1, Ordering::Relaxed));
+    let all_entries = std::mem::take(&mut response.entries);
+    if let Ok(mut cache) = scan_result_cache().lock() {
+        if cache.len() >= SCAN_RESULT_CACHE_CAPACITY {
+            if let Some(oldest_id) = cache.keys().next().cloned() {
+                cache.remove(&oldest_id);
+            }
+        }
+        cache.insert(scan_id.clone(), all_entries.clone());
+    }
+    response.scan_id = scan_id;
+    response.entries = all_entries.into_iter().take(SCAN_PAGE_SIZE).collect();
+    response.next_cursor = Some(SCAN_PAGE_SIZE);
+    response
+}
+
 fn friendly_runtime_error(context: &str, target: &str, raw: &str) -> String {
     let lower = raw.to_ascii_lowercase();
     let (code, reason, action) = if lower.contains("permission denied")
@@ -2409,6 +2456,9 @@ fn perform_scan(
                 report,
                 vfs: format_vfs_text(&tree, "ntfs"),
                 entries: structured_entries_from_tree(&tree, "ntfs"),
+                scan_id: String::new(),
+                total_entries: 0,
+                next_cursor: None,
             })
         }
         "exfat" => {
@@ -2464,6 +2514,9 @@ fn perform_scan(
                 report,
                 vfs: format_vfs_text(&tree, "exfat"),
                 entries: structured_entries_from_tree(&tree, "exfat"),
+                scan_id: String::new(),
+                total_entries: 0,
+                next_cursor: None,
             })
         }
         "fat32" => {
@@ -2520,6 +2573,9 @@ fn perform_scan(
                 report,
                 vfs: format_vfs_text(&tree, "fat32"),
                 entries: structured_entries_from_tree(&tree, "fat32"),
+                scan_id: String::new(),
+                total_entries: 0,
+                next_cursor: None,
             })
         }
         "apfs" => {
@@ -2583,6 +2639,9 @@ fn perform_scan(
                 report,
                 vfs: format_vfs_text(&tree, "apfs"),
                 entries: structured_entries_from_tree(&tree, "apfs"),
+                scan_id: String::new(),
+                total_entries: 0,
+                next_cursor: None,
             })
         }
         "carver" => {
@@ -2695,6 +2754,9 @@ fn perform_scan(
                 report,
                 entries: structured_entries_from_vfs_text(&vfs),
                 vfs,
+                scan_id: String::new(),
+                total_entries: 0,
+                next_cursor: None,
             })
         }
         _ => Err(format!("不支援的掃描模式：{}", mode)),
@@ -4244,13 +4306,37 @@ async fn run_recovery_scan(
                 },
             )
             .ok();
-            return Ok(r);
+            return Ok(prepare_scan_response(r));
         }
         Err(e) if file_path.starts_with("/dev/") && is_perm_denied(&e) => {}
         Err(e) => return Err(friendly_runtime_error("掃描", &file_path, &e)),
     }
     run_privileged_scan(&file_path, &mode, count, &app)
+        .map(prepare_scan_response)
         .map_err(|e| friendly_runtime_error("掃描", &file_path, &e))
+}
+
+#[tauri::command]
+async fn get_scan_page(
+    scan_id: String,
+    cursor: usize,
+    limit: usize,
+) -> Result<ScanPageResponse, String> {
+    let cache = scan_result_cache()
+        .lock()
+        .map_err(|_| "掃描結果快取目前無法使用。".to_string())?;
+    let entries = cache
+        .get(&scan_id)
+        .ok_or_else(|| "掃描結果已過期，請重新執行掃描。".to_string())?;
+    let safe_limit = limit.clamp(1, SCAN_PAGE_SIZE);
+    let start = cursor.min(entries.len());
+    let end = start.saturating_add(safe_limit).min(entries.len());
+    Ok(ScanPageResponse {
+        scan_id,
+        entries: entries[start..end].to_vec(),
+        total_entries: entries.len(),
+        next_cursor: (end < entries.len()).then_some(end),
+    })
 }
 
 #[tauri::command]
@@ -4731,6 +4817,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .invoke_handler(tauri::generate_handler![
             run_recovery_scan,
+            get_scan_page,
             run_recovery_extract,
             run_recovery_extract_batch,
             get_recovery_default_dir,
@@ -4764,7 +4851,10 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{check_output_isolation, open_source, validate_report_open_target};
+    use super::{
+        ScanEntryPayload, ScanResponse, check_output_isolation, get_scan_page, open_source,
+        prepare_scan_response, validate_report_open_target,
+    };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -4829,5 +4919,46 @@ mod tests {
             .unwrap();
         assert!(!result.ok);
         assert!(result.message.contains("實體磁碟不可直接掃描"));
+    }
+
+    #[test]
+    fn large_scan_response_returns_first_page_and_cursor() {
+        let response = ScanResponse {
+            report: String::new(),
+            vfs: String::new(),
+            entries: (0..501)
+                .map(|index| ScanEntryPayload {
+                    path: format!("/file-{index}"),
+                    kind: "File".to_string(),
+                    status: "Allocated".to_string(),
+                    size: "1".to_string(),
+                    id: index.to_string(),
+                    confidence: String::new(),
+                    quality: String::new(),
+                    tier: String::new(),
+                    recovery_mode: String::new(),
+                    bytes_lost: String::new(),
+                    bytes_read: String::new(),
+                    reason: String::new(),
+                })
+                .collect(),
+            scan_id: String::new(),
+            total_entries: 0,
+            next_cursor: None,
+        };
+
+        let first_page = prepare_scan_response(response);
+        assert_eq!(first_page.entries.len(), 500);
+        assert_eq!(first_page.total_entries, 501);
+        assert_eq!(first_page.next_cursor, Some(500));
+
+        let scan_id = first_page.scan_id.clone();
+        let second_page = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(get_scan_page(scan_id, 500, 500))
+            .unwrap();
+        assert_eq!(second_page.entries.len(), 1);
+        assert_eq!(second_page.entries[0].id, "500");
+        assert_eq!(second_page.next_cursor, None);
     }
 }
