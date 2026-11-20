@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 3,
-  "updated_at": "2026-11-20T23:05:48+08:00",
+  "revision": 5,
+  "updated_at": "2026-11-20T23:08:23+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -53,15 +53,22 @@
       "depends_on": [
         "S1"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/S2-product-ci",
+      "started_at": "2026-11-20T23:07:20+08:00",
       "finished_at": null,
-      "next_step": null,
+      "next_step": "取得 owner 授權後 push 此分支，重跑 product-ci.yml 並確認 gh run 為 success、log 含 cargo test result。",
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "Ruby YAML parse of .github/workflows/product-ci.yml：通過。",
+        "python3 scripts/check-product-security.py：通過；無 quarantine prototype／generated junk。",
+        "python3 scripts/check-product-frontend.py：通過；CSP 與 inline-script hash 一致。",
+        "cargo fmt --all -- --check、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast、cargo clippy --workspace --all-targets --locked -- -D warnings：全部通過。"
+      ],
+      "notes": [
+        "cargo-deny action 保留 commit SHA，已移至 ubuntu-latest，避免 macOS-14 不支援 container action；未 push，故尚無遠端 gh run 證據。"
+      ]
     },
     {
       "id": "S3",

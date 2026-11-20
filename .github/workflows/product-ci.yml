@@ -28,6 +28,21 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  cargo-deny:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Audit dependency advisories, licenses and sources
+        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25
+        with:
+          manifest-path: product/Cargo.toml
+          command: check
+          arguments: --all-features
+          command-arguments: advisories licenses sources bans
+
   rust-gate:
     runs-on: macos-14
     timeout-minutes: 30
@@ -52,14 +67,6 @@ jobs:
         run: |
           python3 scripts/check-free-p7.py
           python3 -m unittest scripts/release/test_generate_release_evidence.py
-
-      - name: Audit dependency advisories, licenses and sources
-        uses: EmbarkStudios/cargo-deny-action@3c6349835b2b7b196a839186cb8b78e02f7b5f25
-        with:
-          manifest-path: product/Cargo.toml
-          command: check
-          arguments: --all-features
-          command-arguments: advisories licenses sources bans
 
       - name: Test fail-closed storage identity parser
         run: python3 -m unittest discover -s tools/macos -p 'test_*.py'
