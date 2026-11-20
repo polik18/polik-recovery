@@ -933,6 +933,7 @@ let lastSessionPlan = null;
 let activeSession = null;
 let outputIsolation = {pending:false, ok:false, message:'尚未完成來源／輸出 physical store 檢查。', sourceStores:[], outputStores:[]};
 let outputIsolationTicket = 0;
+let latestStructuredEntries = null;
 // 縮圖快取：Map<entryId, base64String | 'loading' | 'error'>
 const thumbCache = new Map();
 let thumbObserver = null;
@@ -2168,11 +2169,12 @@ function parseVfs(txt){
       return{path:p[0]||'/unknown',kind:p[1]||'Unknown',status:p[2]||'Unknown',size:attrs.size||'-',id:attrs.id||String(idx),confidence:attrs.confidence||'',quality:attrs.quality||'',tier:attrs.tier||'',recoveryMode:attrs.recovery_mode||attrs.mode||'',bytesLost:attrs.bytes_lost||'',bytesRead:attrs.bytes_read||'',reason:attrs.reason||''};
     });
 }
-function parseInputs(){
+function parseInputs(structuredEntries=null){
   thumbCache.clear(); // 新掃描時清除縮圖快取
   if(thumbObserver){ thumbObserver.disconnect(); thumbObserver=null; }
   state.report=parseReport($('reportInput').value);
-  state.entries=parseVfs($('vfsInput').value);
+  latestStructuredEntries = Array.isArray(structuredEntries) ? structuredEntries : null;
+  state.entries=latestStructuredEntries || parseVfs($('vfsInput').value);
   state.selected=state.entries.find(e=>e.kind==='File')||state.entries[0]||null;
   const autoSelected = state.entries.filter(shouldAutoSelect).map(e=>e.id);
   state.selectedIds=new Set(autoSelected.length ? autoSelected : (state.selected && state.selected.kind==='File' ? [state.selected.id] : []));
@@ -2621,7 +2623,7 @@ async function doScan(){
     const scanCount = activeMode==='ntfs' ? ntfsScanCount() : 0;
     const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount});
     $('reportInput').value=res.report;$('vfsInput').value=res.vfs;
-    parseInputs();setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
+    parseInputs(res.entries);setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
   }catch(err){
     setStep(1);
     if(isUserCancelError(err)){ setAS('已中止掃描。','error'); }

@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 29,
-  "updated_at": "2026-11-21T00:31:20+08:00",
+  "revision": 30,
+  "updated_at": "2026-11-21T00:37:10+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -318,11 +318,12 @@
       "branch": "wp/P4-desktop-nonblocking",
       "started_at": "2026-11-21T00:24:30+08:00",
       "finished_at": null,
-      "next_step": "補 ScanResponse structured entries 與分頁 command／前端首次可見頁；再以合成大量結果量測 UI 首次可見時間與取消回應。",
+      "next_step": "新增真正的 scan page／cursor 回傳契約，讓前端先渲染首頁而非一次建立全部 DOM；再以 10 萬筆合成資料量測首次可見時間與取消回應。",
       "blockers": [],
       "evidence": [
         "run_recovery_scan、run_recovery_extract、run_recovery_extract_batch 改由 Tauri async runtime 的 spawn_blocking 執行同步重工作；read_file_thumbnail 同樣移至 blocking worker。",
         "縮圖加入 source path + mode + offset + selected id key 的 128 項 Mutex LRU cache，命中時不重讀來源；未改變 raw-device／safe-writer 門禁。",
+        "ScanResponse 新增 serde structured `entries` payload（保留 report/vfs 相容欄位），由 NTFS／exFAT／FAT32／APFS VFS tree 與 carver text 產生；前端掃描完成時優先使用 entries。",
         "cargo fmt --all -- --check、cargo check --workspace --all-targets --locked、cargo clippy --workspace --all-targets --locked -- -D warnings、cargo test -p polik-recovery-desktop --locked：通過（5 tests）。",
         "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、git diff --check：通過。"
       ],

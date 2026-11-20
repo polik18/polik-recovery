@@ -125,6 +125,24 @@ struct ExtractProgressPayload {
 struct ScanResponse {
     report: String,
     vfs: String,
+    entries: Vec<ScanEntryPayload>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct ScanEntryPayload {
+    path: String,
+    kind: String,
+    status: String,
+    size: String,
+    id: String,
+    confidence: String,
+    quality: String,
+    tier: String,
+    recovery_mode: String,
+    bytes_lost: String,
+    bytes_read: String,
+    reason: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize, Clone)]
@@ -1975,6 +1993,73 @@ fn format_vfs_text(tree: &data_recovery_vfs::VfsTree, mode: &str) -> String {
     out
 }
 
+fn structured_entries_from_tree(
+    tree: &data_recovery_vfs::VfsTree,
+    mode: &str,
+) -> Vec<ScanEntryPayload> {
+    tree.flattened()
+        .into_iter()
+        .filter_map(|(id, path)| {
+            let entry = tree.entry(id)?;
+            let (tier, quality) = vfs_quality_hint(mode, entry)
+                .map(|(tier, quality)| (tier.to_string(), quality.to_string()))
+                .unwrap_or_else(|| (String::new(), String::new()));
+            Some(ScanEntryPayload {
+                path,
+                kind: format!("{:?}", entry.kind),
+                status: format!("{:?}", entry.status),
+                size: entry
+                    .size_bytes
+                    .map(|size| size.to_string())
+                    .unwrap_or_else(|| "-".to_string()),
+                id: id.0.to_string(),
+                confidence: String::new(),
+                quality,
+                tier,
+                recovery_mode: String::new(),
+                bytes_lost: String::new(),
+                bytes_read: String::new(),
+                reason: String::new(),
+            })
+        })
+        .collect()
+}
+
+fn structured_entries_from_vfs_text(vfs: &str) -> Vec<ScanEntryPayload> {
+    vfs.lines()
+        .filter_map(|line| {
+            let fields = line.split('\t').collect::<Vec<_>>();
+            if fields.len() < 3 {
+                return None;
+            }
+            let mut attrs = HashMap::new();
+            for field in fields.iter().skip(3) {
+                if let Some((key, value)) = field.split_once('=') {
+                    attrs.insert(key, value);
+                }
+            }
+            Some(ScanEntryPayload {
+                path: fields[0].to_string(),
+                kind: fields[1].to_string(),
+                status: fields[2].to_string(),
+                size: attrs.get("size").copied().unwrap_or("-").to_string(),
+                id: attrs.get("id").copied().unwrap_or("0").to_string(),
+                confidence: attrs.get("confidence").copied().unwrap_or("").to_string(),
+                quality: attrs.get("quality").copied().unwrap_or("").to_string(),
+                tier: attrs.get("tier").copied().unwrap_or("").to_string(),
+                recovery_mode: attrs
+                    .get("recovery_mode")
+                    .copied()
+                    .unwrap_or("")
+                    .to_string(),
+                bytes_lost: attrs.get("bytes_lost").copied().unwrap_or("").to_string(),
+                bytes_read: attrs.get("bytes_read").copied().unwrap_or("").to_string(),
+                reason: attrs.get("reason").copied().unwrap_or("").to_string(),
+            })
+        })
+        .collect()
+}
+
 fn friendly_runtime_error(context: &str, target: &str, raw: &str) -> String {
     let lower = raw.to_ascii_lowercase();
     let (code, reason, action) = if lower.contains("permission denied")
@@ -2323,6 +2408,7 @@ fn perform_scan(
             Ok(ScanResponse {
                 report,
                 vfs: format_vfs_text(&tree, "ntfs"),
+                entries: structured_entries_from_tree(&tree, "ntfs"),
             })
         }
         "exfat" => {
@@ -2377,6 +2463,7 @@ fn perform_scan(
             Ok(ScanResponse {
                 report,
                 vfs: format_vfs_text(&tree, "exfat"),
+                entries: structured_entries_from_tree(&tree, "exfat"),
             })
         }
         "fat32" => {
@@ -2432,6 +2519,7 @@ fn perform_scan(
             Ok(ScanResponse {
                 report,
                 vfs: format_vfs_text(&tree, "fat32"),
+                entries: structured_entries_from_tree(&tree, "fat32"),
             })
         }
         "apfs" => {
@@ -2494,6 +2582,7 @@ fn perform_scan(
             Ok(ScanResponse {
                 report,
                 vfs: format_vfs_text(&tree, "apfs"),
+                entries: structured_entries_from_tree(&tree, "apfs"),
             })
         }
         "carver" => {
@@ -2602,7 +2691,11 @@ fn perform_scan(
                 ole,
                 conf_avg
             );
-            Ok(ScanResponse { report, vfs })
+            Ok(ScanResponse {
+                report,
+                entries: structured_entries_from_vfs_text(&vfs),
+                vfs,
+            })
         }
         _ => Err(format!("不支援的掃描模式：{}", mode)),
     }
