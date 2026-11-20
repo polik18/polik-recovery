@@ -9,7 +9,7 @@ failed=0
 check_absent() {
   pattern=$1
   description=$2
-  if rg -n -- "$pattern" README.md index.html; then
+  if grep -nE -- "$pattern" README.md index.html; then
     printf 'ERROR: %s\n' "$description" >&2
     failed=1
   fi
