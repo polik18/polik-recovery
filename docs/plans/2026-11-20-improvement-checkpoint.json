@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 31,
-  "updated_at": "2026-11-21T00:35:30+08:00",
+  "revision": 32,
+  "updated_at": "2026-11-21T00:45:09+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -313,12 +313,12 @@
       "title": "桌面後端不阻塞、分頁回傳、縮圖快取",
       "priority": "P1",
       "depends_on": [],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/P4-desktop-nonblocking",
       "started_at": "2026-11-21T00:24:30+08:00",
-      "finished_at": null,
-      "next_step": "以 10 萬筆合成資料量測首頁可見時間與取消回應；若清單渲染仍超過門檻，接續 P5 固定列高虛擬捲動。",
+      "finished_at": "2026-11-21T00:45:09+08:00",
+      "next_step": null,
       "blockers": [],
       "evidence": [
         "run_recovery_scan、run_recovery_extract、run_recovery_extract_batch 改由 Tauri async runtime 的 spawn_blocking 執行同步重工作；read_file_thumbnail 同樣移至 blocking worker。",
@@ -327,9 +327,12 @@
         "ScanResponse 超過 500 筆時只回傳首頁，保留 4 組 scan_id 結果快取；新增 `get_scan_page(scan_id, cursor, limit)` 並限制單頁最多 500 筆，前端先 render 首頁再背景逐頁合併。",
         "新增 large_scan_response_returns_first_page_and_cursor：501 筆合成資料驗證首頁 500 筆、cursor=500、下一頁 1 筆；cargo test -p polik-recovery-desktop --locked：6 tests passed。",
         "cargo fmt --all -- --check、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast：通過；workspace clippy 目前被既有 fs-exfat explicit_counter_loop 與 safe-writer filter_next lint 阻擋，非本次變更。",
-        "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、python3 tools/quality/check_fixture_reproducibility.py、git diff --check：通過。"
+        "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、python3 tools/quality/check_fixture_reproducibility.py、git diff --check：通過。",
+        "本機 Camoufox 以 100,000 筆合成 VFS 實測：首次解析／render 204 ms；清單只建立 20 列，捲至中段 28 列；格子初始 196 張卡片，捲至中段 322 張，均未建立全量 DOM。"
       ],
-      "notes": []
+      "notes": [
+        "取消按鈕的 job token／parser 迴圈驗收仍由依賴 P4 的 U3 負責；本 WP 已完成重工作下放、首頁游標契約與前端虛擬化所需的後端支援。"
+      ]
     },
     {
       "id": "P5",
@@ -338,15 +341,22 @@
       "depends_on": [
         "P4"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/P4-desktop-nonblocking",
+      "started_at": "2026-11-21T00:37:00+08:00",
+      "finished_at": "2026-11-21T00:45:09+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "清單與格子改為固定列高／列數的 virtual window + overscan；資料以 visibleEntryById Map 對應，click/change 改用父層事件委派，不再每列註冊 listener。",
+        "格子縮圖請求改成最多 4 個併發，IntersectionObserver 只觀察目前可見圖片；新增瀏覽器 layout 的 min-height／grid row 限制，避免 virtual canvas 反向撐大整個 app。",
+        "本機 Camoufox 100,000 筆 synthetic 實測：首次 204 ms、清單 20 列；list scroll 中段 28 列（ID 49991–50018）；grid 初始 196 張、scroll 中段 322 張，virtual canvas 高度與可捲動位置正常。",
+        "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、node --check inline script、git diff --check：通過。"
+      ],
+      "notes": [
+        "未使用外部網路或真實裝置；Camoufox 僅載入本機 HTTP fixture 頁面。"
+      ]
     },
     {
       "id": "U1",

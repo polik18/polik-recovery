@@ -66,7 +66,7 @@
     .btn-side:hover{background:var(--bg);border-color:var(--accent);color:var(--accent);}
 
     /* ── Main ── */
-    .main{display:flex;flex-direction:column;background:var(--bg);min-width:0;}
+    .main{display:flex;flex-direction:column;background:var(--bg);min-width:0;min-height:0;}
     .topbar{height:60px;border-bottom:1px solid var(--border);padding:0 18px;display:flex;align-items:center;justify-content:space-between;gap:14px;background:var(--panel);flex-shrink:0;}
     .topbar h1{font-family:var(--font-ui);font-size:16px;font-weight:700;color:var(--text);}
     .toolbar{display:flex;align-items:center;gap:7px;}
@@ -141,7 +141,7 @@
     .disk-seg.data{background:#A0AEC0;border-right:0;color:#fff;}
 
     /* Browser */
-    .browser{display:grid;grid-template-columns:1.2fr 0.8fr;gap:12px;flex:1;min-height:0;overflow:hidden;}
+    .browser{display:grid;grid-template-columns:1.2fr 0.8fr;grid-template-rows:minmax(0,1fr);gap:12px;flex:1;min-height:0;overflow:hidden;}
     .pane{background:var(--panel);border:1px solid var(--border);border-radius:11px;box-shadow:var(--shadow);display:flex;flex-direction:column;min-height:0;overflow:hidden;}
     .pane-hd{padding:11px 14px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px;flex-shrink:0;}
     .pane-hd strong{font-family:var(--font-ui);font-size:13px;font-weight:700;color:var(--text);}
@@ -160,6 +160,8 @@
 
     /* List view */
     .tree-row{display:grid;grid-template-columns:24px minmax(0,1fr) 72px 94px 96px 72px;gap:7px;padding:7px 9px;border-radius:7px;cursor:pointer;align-items:center;transition:all .15s;margin-bottom:2px;}
+    .virtual-list{position:relative;width:100%;}
+    .virtual-row{position:absolute!important;left:0;right:0;height:44px;box-sizing:border-box;margin-bottom:0!important;}
     .tree-row:hover{background:var(--bg);}
     .tree-row.sel{background:var(--accent-s);border-left:3px solid var(--accent);padding-left:6px;}
     .pick{width:16px;height:16px;accent-color:var(--accent);cursor:pointer;}
@@ -172,6 +174,8 @@
     .grid-wrap{padding:8px;overflow-y:auto;flex:1;min-height:0;display:none;}
     .grid-wrap.act{display:block;}
     .grid-view{display:grid;grid-template-columns:repeat(auto-fill,minmax(74px,1fr));gap:7px;}
+    .grid-view.virtual-grid{display:block;position:relative;min-height:1px;}
+    .virtual-grid .gi{position:absolute;box-sizing:border-box;margin:0;}
     .gi{display:flex;flex-direction:column;align-items:center;gap:5px;padding:9px 5px;border-radius:9px;cursor:pointer;border:1.5px solid transparent;transition:all .15s;text-align:center;position:relative;}
     .gi:hover{background:var(--bg);}
     .gi.sel{background:var(--accent-s);border-color:var(--accent);}
@@ -938,6 +942,15 @@ let scanPageTicket = 0;
 // 縮圖快取：Map<entryId, base64String | 'loading' | 'error'>
 const thumbCache = new Map();
 let thumbObserver = null;
+const VIRTUAL_ROW_HEIGHT = 44;
+const VIRTUAL_GRID_ROW_HEIGHT = 92;
+const VIRTUAL_OVERSCAN = 8;
+const visibleEntryById = new Map();
+let visibleListEntries = [];
+let visibleGridEntries = [];
+const thumbnailQueue = [];
+let thumbnailInFlight = 0;
+const THUMBNAIL_CONCURRENCY = 4;
 const state = { report:{}, entries:[], selected:null, selectedIds:new Set(), lastSelectedId:null, lastRecoveryReport:null };
 
 // ── Helpers ──
@@ -2172,6 +2185,7 @@ function parseVfs(txt){
 }
 function parseInputs(structuredEntries=null){
   scanPageTicket++;
+  thumbnailQueue.length=0;
   thumbCache.clear(); // 新掃描時清除縮圖快取
   if(thumbObserver){ thumbObserver.disconnect(); thumbObserver=null; }
   state.report=parseReport($('reportInput').value);
@@ -2336,6 +2350,9 @@ function renderQualitySummary(){
 
 function renderList(entries){
   const body=$('treeBody'); body.innerHTML='';
+  visibleListEntries=entries;
+  visibleEntryById.clear();
+  for(const entry of entries) visibleEntryById.set(String(entry.id),entry);
   if(!entries.length){
     const labels=trObj('categoryLabels');
     const hint = activeFilter==='all'
@@ -2345,93 +2362,201 @@ function renderList(entries){
     return;
   }
   const heads=tr('listHead',[]);
-  body.insertAdjacentHTML('beforeend',`<div class="list-head"><span></span><span>${heads[0]}</span><span>${heads[1]}</span><span>${heads[2]}</span><span>${heads[3]}</span><span style="text-align:right">${heads[4]}</span></div>`);
-  for(const e of entries){
-    const isSel=state.selectedIds.has(e.id);
-    const cat=e.kind==='Directory'?'Directory':getCat(e.path);
-    const row=document.createElement('div');
-    row.className='tree-row'+(isSel?' sel':'');
-    row.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="tree-name"><span class="ico">${CAT_ICON[cat]||CAT_ICON.other}</span><span title="${esc(e.path)}">${esc(fname(e.path))}</span></div><span class="pill ${stCls(e.status)}">${stLbl(e.status)}</span><span class="pill ${qualityClass(e)}">${e.kind==='File'?qualityLabel(e):'-'}</span><span class="pill ${routeClass(e)}">${e.kind==='File'?routeLabel(e):'-'}</span><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono);text-align:right;">${e.size==='-'?'-':fmtBytes(+e.size)}</span>${e.kind==='File'?'<button class="quick-rec" tabindex="-1">⚡ 立刻救回</button>':''}`;
-    row.querySelector('.pick').addEventListener('click',ev=>{ev.stopPropagation();handleEntryClick(e,ev,ev.currentTarget.checked);});
-    row.addEventListener('click',ev=>handleEntryClick(e,ev));
-    if(e.kind==='File'){
-      row.querySelector('.quick-rec')?.addEventListener('click', ev=>{ ev.stopPropagation(); quickRecover(e, row); });
+  body.insertAdjacentHTML('beforeend',`<div class="list-head"><span></span><span>${heads[0]}</span><span>${heads[1]}</span><span>${heads[2]}</span><span>${heads[3]}</span><span style="text-align:right">${heads[4]}</span></div><div class="virtual-list" style="height:${entries.length*VIRTUAL_ROW_HEIGHT}px"></div>`);
+  ensureListVirtualHandlers(body);
+  renderVirtualListWindow();
+}
+
+function ensureListVirtualHandlers(body){
+  if(body.dataset.virtualBound==='1') return;
+  body.dataset.virtualBound='1';
+  body.addEventListener('scroll',renderVirtualListWindow,{passive:true});
+  body.addEventListener('change',ev=>{
+    const pick=ev.target.closest?.('.pick');
+    if(!pick) return;
+    const row=pick.closest('[data-entry-id]');
+    const entry=row && visibleEntryById.get(String(row.dataset.entryId));
+    if(entry) handleEntryClick(entry,ev,pick.checked);
+  });
+  body.addEventListener('click',ev=>{
+    if(ev.target.closest?.('.pick')) return;
+    const row=ev.target.closest?.('[data-entry-id]');
+    const entry=row && visibleEntryById.get(String(row.dataset.entryId));
+    if(!entry) return;
+    if(ev.target.closest?.('.quick-rec')){
+      ev.stopPropagation();
+      quickRecover(entry,row);
+      return;
     }
-    body.appendChild(row);
+    handleEntryClick(entry,ev);
+  });
+}
+
+function makeListRow(e){
+  const isSel=state.selectedIds.has(e.id);
+  const cat=e.kind==='Directory'?'Directory':getCat(e.path);
+  const row=document.createElement('div');
+  row.className='tree-row virtual-row'+(isSel?' sel':'');
+  row.dataset.entryId=String(e.id);
+  row.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="tree-name"><span class="ico">${CAT_ICON[cat]||CAT_ICON.other}</span><span title="${esc(e.path)}">${esc(fname(e.path))}</span></div><span class="pill ${stCls(e.status)}">${stLbl(e.status)}</span><span class="pill ${qualityClass(e)}">${e.kind==='File'?qualityLabel(e):'-'}</span><span class="pill ${routeClass(e)}">${e.kind==='File'?routeLabel(e):'-'}</span><span style="font-size:11px;color:var(--muted);font-family:var(--font-mono);text-align:right;">${e.size==='-'?'-':fmtBytes(+e.size)}</span>${e.kind==='File'?'<button class="quick-rec" tabindex="-1">⚡ 立刻救回</button>':''}`;
+  return row;
+}
+
+function renderVirtualListWindow(){
+  const body=$('treeBody');
+  const canvas=body?.querySelector('.virtual-list');
+  if(!body || !canvas || !visibleListEntries.length) return;
+  const header=body.querySelector('.list-head');
+  const headerHeight=header?.offsetHeight || 32;
+  const top=Math.max(0,body.scrollTop-headerHeight);
+  const first=Math.max(0,Math.floor(top/VIRTUAL_ROW_HEIGHT)-VIRTUAL_OVERSCAN);
+  const last=Math.min(visibleListEntries.length,Math.ceil((top+body.clientHeight)/VIRTUAL_ROW_HEIGHT)+VIRTUAL_OVERSCAN);
+  canvas.replaceChildren();
+  for(let index=first;index<last;index++){
+    const row=makeListRow(visibleListEntries[index]);
+    row.style.transform=`translateY(${index*VIRTUAL_ROW_HEIGHT}px)`;
+    canvas.appendChild(row);
   }
 }
 
 function renderGrid(entries){
   const body=$('gridBody'); body.innerHTML='';
-  const imgCats = new Set(['image']);
-  for(const e of entries){
-    const isSel=state.selectedIds.has(e.id);
-    const isDel=e.status.toLowerCase()==='deleted';
-    const cat=e.kind==='Directory'?'Directory':getCat(e.path);
-    const ext=fext(e.path);
-    const isImg = e.kind==='File' && imgCats.has(cat);
-    const item=document.createElement('div');
-    item.className='gi'+(isSel?' sel':'')+(isDel?' del':'');
-    if(isImg) item.dataset.entryId=String(e.id);
-    // 若快取中有縮圖，直接顯示；否則顯示 icon（observer 會補填）
-    const cachedThumb = thumbCache.get(String(e.id));
-    const thumbContent = isImg && cachedThumb && cachedThumb!=='loading' && cachedThumb!=='error'
-      ? `<img src="data:image/jpeg;base64,${cachedThumb}" style="width:100%;height:100%;object-fit:cover;border-radius:7px;" alt="">`
-      : (CAT_ICON[cat]||CAT_ICON.other);
-    item.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="gi-thumb">${e.kind==='File'?`<span class="mini-q ${qualityBucket(e)}"></span>`:''}${thumbContent}${ext?`<span class="gi-badge${isDel?' del':''}">${ext}</span>`:''}</div><div class="gi-lbl" title="${esc(e.path)}">${esc(fname(e.path))}</div>${e.kind==='File'?'<button class="quick-rec-g" tabindex="-1">⚡ 立刻救回</button>':''}`;
-    item.querySelector('.pick').addEventListener('click',ev=>{ev.stopPropagation();handleEntryClick(e,ev,ev.currentTarget.checked);});
-    item.addEventListener('click',ev=>handleEntryClick(e,ev));
-    if(e.kind==='File'){
-      item.querySelector('.quick-rec-g')?.addEventListener('click', ev=>{ ev.stopPropagation(); quickRecover(e, item); });
+  visibleGridEntries=entries;
+  for(const entry of entries) visibleEntryById.set(String(entry.id),entry);
+  body.classList.add('virtual-grid');
+  body.style.height=`${Math.max(1,Math.ceil(entries.length/4)*VIRTUAL_GRID_ROW_HEIGHT)}px`;
+  ensureGridVirtualHandlers(body);
+  renderVirtualGridWindow();
+}
+
+function ensureGridVirtualHandlers(body){
+  if(body.dataset.virtualBound==='1') return;
+  body.dataset.virtualBound='1';
+  $('gridWrap').addEventListener('scroll',renderVirtualGridWindow,{passive:true});
+  body.addEventListener('change',ev=>{
+    const pick=ev.target.closest?.('.pick');
+    if(!pick) return;
+    const item=pick.closest('[data-entry-id]');
+    const entry=item && visibleEntryById.get(String(item.dataset.entryId));
+    if(entry) handleEntryClick(entry,ev,pick.checked);
+  });
+  body.addEventListener('click',ev=>{
+    if(ev.target.closest?.('.pick')) return;
+    const item=ev.target.closest?.('[data-entry-id]');
+    const entry=item && visibleEntryById.get(String(item.dataset.entryId));
+    if(!entry) return;
+    if(ev.target.closest?.('.quick-rec-g')){
+      ev.stopPropagation();
+      quickRecover(entry,item);
+      return;
     }
+    handleEntryClick(entry,ev);
+  });
+}
+
+function drainThumbnailQueue(){
+  while(thumbnailInFlight<THUMBNAIL_CONCURRENCY && thumbnailQueue.length){
+    const {el,entryId}=thumbnailQueue.shift();
+    thumbnailInFlight++;
+    const entry=state.entries.find(item=>String(item.id)===entryId);
+    const core=getTauri()?.core;
+    if(!entry || !core){
+      thumbnailInFlight--;
+      continue;
+    }
+    core.invoke('read_file_thumbnail',{
+      filePath:$('sourcePath').value.trim(),
+      mode:activeMode,
+      selectedId:entryId,
+      offset:selectedPartitionOffset,
+    }).then(b64=>{
+      thumbCache.set(entryId,b64);
+      const thumb=el.isConnected && el.querySelector('.gi-thumb');
+      if(!thumb) return;
+      const badge=thumb.querySelector('.gi-badge');
+      const miniQ=thumb.querySelector('.mini-q');
+      thumb.innerHTML='';
+      if(miniQ) thumb.appendChild(miniQ.cloneNode(true));
+      const img=document.createElement('img');
+      img.src=`data:image/jpeg;base64,${b64}`;
+      img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:7px;';
+      img.alt='';
+      thumb.appendChild(img);
+      if(badge) thumb.appendChild(badge.cloneNode(true));
+    }).catch(()=>{
+      thumbCache.set(entryId,'error');
+    }).finally(()=>{
+      thumbnailInFlight--;
+      drainThumbnailQueue();
+    });
+  }
+}
+
+function queueThumbnail(el,entryId){
+  if(!entryId || thumbCache.has(entryId)) return;
+  thumbCache.set(entryId,'loading');
+  thumbnailQueue.push({el,entryId});
+  drainThumbnailQueue();
+}
+
+function makeGridItem(e){
+  const isSel=state.selectedIds.has(e.id);
+  const isDel=e.status.toLowerCase()==='deleted';
+  const cat=e.kind==='Directory'?'Directory':getCat(e.path);
+  const ext=fext(e.path);
+  const isImg=e.kind==='File' && cat==='image';
+  const cachedThumb=thumbCache.get(String(e.id));
+  const thumbContent=isImg && cachedThumb && cachedThumb!=='loading' && cachedThumb!=='error'
+    ? `<img src="data:image/jpeg;base64,${cachedThumb}" style="width:100%;height:100%;object-fit:cover;border-radius:7px;" alt="">`
+    : (CAT_ICON[cat]||CAT_ICON.other);
+  const item=document.createElement('div');
+  item.className='gi'+(isSel?' sel':'')+(isDel?' del':'');
+  item.dataset.entryId=String(e.id);
+  if(isImg) item.dataset.thumbEntryId=String(e.id);
+  item.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="gi-thumb">${e.kind==='File'?`<span class="mini-q ${qualityBucket(e)}"></span>`:''}${thumbContent}${ext?`<span class="gi-badge${isDel?' del':''}">${ext}</span>`:''}</div><div class="gi-lbl" title="${esc(e.path)}">${esc(fname(e.path))}</div>${e.kind==='File'?'<button class="quick-rec-g" tabindex="-1">⚡ 立刻救回</button>':''}`;
+  return item;
+}
+
+function renderVirtualGridWindow(){
+  const body=$('gridBody');
+  if(!body || !visibleGridEntries.length) return;
+  const width=Math.max(1,body.clientWidth || $('gridWrap').clientWidth || 320);
+  const columns=Math.max(1,Math.floor((width+7)/81));
+  const rowCount=Math.ceil(visibleGridEntries.length/columns);
+  body.style.height=`${Math.max(1,rowCount*VIRTUAL_GRID_ROW_HEIGHT)}px`;
+  const scrollTop=$('gridWrap').scrollTop;
+  const firstRow=Math.max(0,Math.floor(scrollTop/VIRTUAL_GRID_ROW_HEIGHT)-VIRTUAL_OVERSCAN);
+  const lastRow=Math.ceil((scrollTop+$('gridWrap').clientHeight)/VIRTUAL_GRID_ROW_HEIGHT)+VIRTUAL_OVERSCAN;
+  const first=firstRow*columns;
+  const last=Math.min(visibleGridEntries.length,lastRow*columns);
+  body.replaceChildren();
+  for(let index=first;index<last;index++){
+    const item=makeGridItem(visibleGridEntries[index]);
+    const column=index%columns;
+    const row=Math.floor(index/columns);
+    item.style.left=`${column*100/columns}%`;
+    item.style.width=`${100/columns}%`;
+    item.style.top=`${row*VIRTUAL_GRID_ROW_HEIGHT}px`;
     body.appendChild(item);
   }
+  if(isGrid) setupThumbObserver();
 }
 
 function setupThumbObserver(){
   if(!hasTauriRuntime) return;
   if(thumbObserver) thumbObserver.disconnect();
-  thumbObserver = new IntersectionObserver(async(entries)=>{
+  thumbObserver = new IntersectionObserver(entries=>{
     for(const obs of entries){
       if(!obs.isIntersecting) continue;
       const el = obs.target;
-      const entryId = el.dataset.entryId;
+      const entryId = el.dataset.thumbEntryId;
       if(!entryId) continue;
       if(thumbCache.has(entryId)) continue; // 已有快取
-      thumbCache.set(entryId, 'loading');
       thumbObserver.unobserve(el);
-      const entry = state.entries.find(e=>String(e.id)===entryId);
-      if(!entry) continue;
-      const core = getTauri()?.core;
-      if(!core) continue;
-      try{
-        const b64 = await core.invoke('read_file_thumbnail',{
-          filePath: $('sourcePath').value.trim(),
-          mode: activeMode,
-          selectedId: entryId,
-          offset: selectedPartitionOffset,
-        });
-        thumbCache.set(entryId, b64);
-        // Update the thumb element in-place
-        const thumb = el.querySelector('.gi-thumb');
-        if(thumb){
-          const badge = thumb.querySelector('.gi-badge');
-          const miniQ = thumb.querySelector('.mini-q');
-          thumb.innerHTML='';
-          if(miniQ) thumb.appendChild(miniQ.cloneNode(true));
-          const img=document.createElement('img');
-          img.src=`data:image/jpeg;base64,${b64}`;
-          img.style.cssText='width:100%;height:100%;object-fit:cover;border-radius:7px;';
-          img.alt='';
-          thumb.appendChild(img);
-          if(badge) thumb.appendChild(badge.cloneNode(true));
-        }
-      }catch(_){
-        thumbCache.set(entryId, 'error');
-      }
+      queueThumbnail(el,entryId);
     }
   },{root: $('gridWrap'), rootMargin:'80px', threshold:0.1});
-  $$('#gridBody [data-entry-id]').forEach(el=>thumbObserver.observe(el));
+  $$('#gridBody [data-thumb-entry-id]').forEach(el=>thumbObserver.observe(el));
 }
 
 function renderDetails(){
@@ -2475,7 +2600,7 @@ $('btnGrid').addEventListener('click',()=>{
   $('gridWrap').classList.add('act');
   $('btnGrid').classList.add('act');
   $('btnList').classList.remove('act');
-  setupThumbObserver(); // 切換到格子時啟動縮圖懶加載
+  renderVirtualGridWindow(); // 只建立可見格子並啟動縮圖懶加載
 });
 
 // ── Filter buttons ──
