@@ -55,6 +55,9 @@ impl Default for CarverConfig {
     }
 }
 
+const PARALLEL_SIGNATURE_WORKERS: usize = 4;
+const SIGNATURE_BOUNDARY_OVERLAP: usize = 8;
+
 pub fn carve_source<S: BlockSource + ?Sized>(
     source: &S,
     config: &CarverConfig,
@@ -132,8 +135,12 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
     let size_bytes = source.size_bytes();
     let mut offset = 0u64;
 
+    let scan_window_size = config
+        .chunk_size
+        .saturating_mul(PARALLEL_SIGNATURE_WORKERS)
+        .max(config.chunk_size);
     while offset < size_bytes {
-        let bytes_to_read = config.chunk_size.min((size_bytes - offset) as usize);
+        let bytes_to_read = scan_window_size.min((size_bytes - offset) as usize);
         if bytes_to_read == 0 {
             break;
         }
@@ -170,15 +177,15 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
 
         // Scan only the next candidate signature; memmem avoids six
         // per-byte marker comparisons over every chunk.
-        let mut i = 0;
-        while i < buf.len() {
-            let Some(candidate) = next_signature_offset(buf, i) else {
-                break;
-            };
-            i = candidate;
+        let mut next_candidate_offset = 0;
+        for candidate in parallel_signature_offsets(buf) {
+            if candidate < next_candidate_offset {
+                continue;
+            }
+            let i = candidate;
             let abs_pos = offset + i as u64;
             if abs_pos < next_scan_offset {
-                i += 1;
+                next_candidate_offset = i.saturating_add(1);
                 continue;
             }
 
@@ -205,7 +212,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                             {
                                 return Ok((finalize_carved_files(files), true));
                             }
-                            i += len as usize;
+                            next_candidate_offset = i.saturating_add(len as usize);
                             continue;
                         }
                     }
@@ -235,7 +242,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                             {
                                 return Ok((finalize_carved_files(files), true));
                             }
-                            i += len as usize;
+                            next_candidate_offset = i.saturating_add(len as usize);
                             continue;
                         }
                     }
@@ -265,7 +272,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                             {
                                 return Ok((finalize_carved_files(files), true));
                             }
-                            i += len as usize;
+                            next_candidate_offset = i.saturating_add(len as usize);
                             continue;
                         }
                     }
@@ -294,7 +301,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                         {
                             return Ok((finalize_carved_files(files), true));
                         }
-                        i += candidate.bytes.len();
+                        next_candidate_offset = i.saturating_add(candidate.bytes.len());
                         continue;
                     }
                 }
@@ -328,7 +335,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                         {
                             return Ok((finalize_carved_files(files), true));
                         }
-                        i += candidate.bytes.len();
+                        next_candidate_offset = i.saturating_add(candidate.bytes.len());
                         continue;
                     }
                 }
@@ -357,23 +364,61 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
                             {
                                 return Ok((finalize_carved_files(files), true));
                             }
-                            i += len as usize;
+                            next_candidate_offset = i.saturating_add(len as usize);
                             continue;
                         }
                     }
                 }
             }
 
-            i += 1;
+            next_candidate_offset = i.saturating_add(1);
         }
 
         offset += (bytes_to_read as u64).saturating_sub(config.overlap_size as u64);
-        if bytes_to_read < config.chunk_size {
+        if bytes_to_read < scan_window_size {
             break;
         }
     }
 
     Ok((finalize_carved_files(files), false))
+}
+
+fn parallel_signature_offsets(buffer: &[u8]) -> Vec<usize> {
+    if buffer.len() < 64 * 1024 {
+        return sequential_signature_offsets(buffer, 0);
+    }
+
+    let workers = PARALLEL_SIGNATURE_WORKERS.min(buffer.len());
+    let mut offsets = std::thread::scope(|scope| {
+        let mut handles = Vec::with_capacity(workers);
+        for worker in 0..workers {
+            let start = worker * buffer.len() / workers;
+            let end = (worker + 1) * buffer.len() / workers;
+            handles.push(scope.spawn(move || {
+                let search_start = start.saturating_sub(SIGNATURE_BOUNDARY_OVERLAP);
+                let mut local = sequential_signature_offsets(buffer, search_start);
+                local.retain(|offset| *offset >= start && *offset < end);
+                local
+            }));
+        }
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap_or_default())
+            .collect::<Vec<_>>()
+    });
+    offsets.sort_unstable();
+    offsets.dedup();
+    offsets
+}
+
+fn sequential_signature_offsets(buffer: &[u8], start: usize) -> Vec<usize> {
+    let mut offsets = Vec::new();
+    let mut cursor = start.min(buffer.len());
+    while let Some(offset) = next_signature_offset(buffer, cursor) {
+        offsets.push(offset);
+        cursor = offset.saturating_add(1);
+    }
+    offsets
 }
 
 fn next_signature_offset(buffer: &[u8], start: usize) -> Option<usize> {

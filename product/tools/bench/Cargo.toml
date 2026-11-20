@@ -10,6 +10,10 @@ publish = false
 name = "ntfs-mft-bench"
 path = "src/bin/ntfs_mft_bench.rs"
 
+[[bin]]
+name = "carver-stream-bench"
+path = "src/bin/carver_stream_bench.rs"
+
 [dependencies]
 data_recovery_core = { path = "../../crates/core" }
 data_recovery_file_carver = { path = "../../crates/file-carver" }

@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 40,
-  "updated_at": "2026-11-21T01:45:00+08:00",
+  "revision": 41,
+  "updated_at": "2026-11-21T02:00:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -285,21 +285,23 @@
         "P1",
         "C3"
       ],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/P2-carver-streaming",
       "started_at": "2026-11-21T00:47:00+08:00",
-      "finished_at": null,
-      "next_step": "補上以 std::thread::scope 分段且帶邊界重疊的候選搜尋；完成後再以大於 RAM 的 sparse fixture 驗證記憶體與每秒進度事件。",
+      "finished_at": "2026-11-21T02:00:00+08:00",
+      "next_step": null,
       "blockers": [],
       "evidence": [
         "file-carver 新增 `CarveProgress` 與 `carve_source_with_callback`；callback 可在 chunk 邊界回報 scanned_bytes／total_bytes／files_found 並以 ControlFlow::Break 停止後續掃描。",
         "新增 `carve_source_with_callbacks`：每個通過 C2 區段／hash 去重的 CarvedFile 可在掃描完成前串流交給 caller，file callback 也可用 ControlFlow::Break 取消；新增 streams_each_carved_file_before_scan_finishes 回歸測試。",
         "Tauri carver scan 接上 file callback，逐一 emit `scan-carved-file`（fileType／offset／length／sha256／confidence）與既有 scan-progress；file-carver 11 unit tests、3 format tests、doc-tests 全部通過。",
+        "候選 signature 搜尋改用 `std::thread::scope` 四段並行，段界保留 8 bytes overlap；順序驗證仍共用 C2 next-offset／hash 去重規則。carver benchmark：random 1693.55 MiB/s、PK-dense 1855.39 MiB/s、ftyp-dense 1814.65 MiB/s，三者 carved=0；quality gate false positives=0。",
+        "`python3 tools/bench/run_carver_stream_bench.py`：32 GiB sparse synthetic image 於 64 MiB 安全點取消，scanned=67,895,296 bytes、65 progress events、peak RSS=3,358,720 bytes、memory_gate=true、pass=true。",
         "cargo fmt --manifest-path product/Cargo.toml --all -- --check、check-product-security.py、check-product-frontend.py、Node syntax、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast、git diff --check：全部通過。"
       ],
       "notes": [
-        "目前已完成進度／取消與結果事件串流；仍未宣稱多執行緒候選搜尋或大於 RAM fixture 驗收完成。"
+        "32 GiB 檔案只在 target/bench 建立為 sparse fixture，runner 預設結束後刪除；實測以 bounded cancellation 驗證窗口記憶體與進度事件，不宣稱對真實裝置做任何操作。"
       ]
     },
     {
