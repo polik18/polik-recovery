@@ -442,6 +442,44 @@ impl MftRunMap {
         MftRecord::parse(&record, boot.bytes_per_sector)
     }
 
+    pub fn read_records_batched<S: BlockSource + ?Sized>(
+        &self,
+        source: &S,
+        boot: &NtfsBootSector,
+        start_index: u64,
+        count: usize,
+        batch_bytes: usize,
+    ) -> Result<Vec<MftRecord>, NtfsError> {
+        if count == 0 {
+            return Ok(Vec::new());
+        }
+        let records_per_batch = (batch_bytes / self.record_size).max(1);
+        let mut records = Vec::with_capacity(count);
+        let mut index = 0usize;
+        if start_index == 0 {
+            records.push(self.read_record(source, boot, 0)?);
+            index = 1;
+        }
+        while index < count {
+            let batch_count = records_per_batch.min(count - index);
+            let byte_len = batch_count
+                .checked_mul(self.record_size)
+                .ok_or(NtfsError::OffsetOverflow)?;
+            let logical_offset = (start_index
+                .checked_add(index as u64)
+                .ok_or(NtfsError::OffsetOverflow)?)
+            .checked_mul(self.record_size as u64)
+            .ok_or(NtfsError::OffsetOverflow)?;
+            let mut batch = vec![0_u8; byte_len];
+            self.read_logical(source, logical_offset, &mut batch)?;
+            for record_bytes in batch.chunks_exact(self.record_size) {
+                records.push(MftRecord::parse(record_bytes, boot.bytes_per_sector)?);
+            }
+            index += batch_count;
+        }
+        Ok(records)
+    }
+
     fn read_logical<S: BlockSource + ?Sized>(
         &self,
         source: &S,
@@ -552,13 +590,17 @@ pub fn read_mft_records<S: BlockSource + ?Sized>(
     count: usize,
 ) -> Result<Vec<MftRecord>, NtfsError> {
     let map = read_mft_run_map(source, boot, volume_offset)?;
-    let mut records = Vec::with_capacity(count);
+    read_mft_records_batched(source, boot, &map, count, 4 * 1024 * 1024)
+}
 
-    for index in 0..count {
-        records.push(map.read_record(source, boot, index as u64)?);
-    }
-
-    Ok(records)
+pub fn read_mft_records_batched<S: BlockSource + ?Sized>(
+    source: &S,
+    boot: &NtfsBootSector,
+    map: &MftRunMap,
+    count: usize,
+    batch_bytes: usize,
+) -> Result<Vec<MftRecord>, NtfsError> {
+    map.read_records_batched(source, boot, 0, count, batch_bytes)
 }
 
 /// Reads one MFT record by its record index without walking all earlier records.
