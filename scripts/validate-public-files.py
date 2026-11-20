@@ -41,7 +41,8 @@ class PublicHTMLParser(HTMLParser):
             if name in {"href", "src"} and value:
                 self.references.append((name, value))
 
-        if tag == "script" and not values.get("src"):
+        # JSON-LD 是資料區塊、瀏覽器不會執行，不受 CSP script-src 限制
+        if tag == "script" and not values.get("src") and values.get("type") != "application/ld+json":
             self.inline_scripts += 1
 
         if (
