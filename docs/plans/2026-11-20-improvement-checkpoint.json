@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 13,
-  "updated_at": "2026-11-20T23:24:07+08:00",
+  "revision": 15,
+  "updated_at": "2026-11-20T23:32:08+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -186,15 +186,22 @@
       "depends_on": [
         "C3"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/C4-unreadable-ranges",
+      "started_at": "2026-11-20T23:27:16+08:00",
+      "finished_at": "2026-11-20T23:32:08+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "cargo test --locked -p data_recovery_file_carver：7 unit tests、3 format_validation tests、doc-tests 全部通過；新增 continues_after_unreadable_sector_and_reports_eio，驗證 EIO 後仍完成 carving 並回報 sector 對齊區段 offset=512、length=512、errno=5。",
+        "cargo fmt --all -- --check、cargo build --locked -p polik-recovery-cli、cargo clippy --workspace --all-targets --locked -- -D warnings、cargo test --workspace --locked --no-fail-fast：全部通過。",
+        "python3 tools/quality/run_quality_gate.py：PASS，found ratio 75.0%、high-confidence usable 100%、false positives 0；CLI carve_manifest.json 已包含 unreadable_ranges 陣列。",
+        "python3 tools/bench/run_carver_bench.py --enforce-random-zero：四類映像成功執行，random carved=0；python3 scripts/check-product-security.py、check-product-frontend.py、git diff --check：全部通過。"
+      ],
+      "notes": [
+        "新增向後相容的 carve_source_with_report／CarveReport；carver 對 BlockSource 的 EIO 讀取會跳過不可讀 chunk，TrackingSource 將錯誤依 sector 對齊、合併後由 CLI manifest 與文字摘要呈現。"
+      ]
     },
     {
       "id": "C5",

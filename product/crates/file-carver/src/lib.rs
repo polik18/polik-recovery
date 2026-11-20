@@ -1,4 +1,5 @@
 use data_recovery_core::{BlockSource, ReadError, sha256_hex};
+use std::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct CarvedFile {
@@ -7,6 +8,19 @@ pub struct CarvedFile {
     pub length: u64,
     pub sha256: String,
     pub confidence: f32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct UnreadableRange {
+    pub offset: u64,
+    pub length: u64,
+    pub errno: i32,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct CarveReport {
+    pub carved_files: Vec<CarvedFile>,
+    pub unreadable_ranges: Vec<UnreadableRange>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,6 +49,25 @@ pub fn carve_source<S: BlockSource + ?Sized>(
     source: &S,
     config: &CarverConfig,
 ) -> Result<Vec<CarvedFile>, ReadError> {
+    Ok(carve_source_with_report(source, config)?.carved_files)
+}
+
+pub fn carve_source_with_report<S: BlockSource + ?Sized>(
+    source: &S,
+    config: &CarverConfig,
+) -> Result<CarveReport, ReadError> {
+    let tracked = TrackingSource::new(source);
+    let carved_files = carve_source_impl(&tracked, config)?;
+    Ok(CarveReport {
+        carved_files,
+        unreadable_ranges: tracked.unreadable_ranges(),
+    })
+}
+
+fn carve_source_impl<S: BlockSource + ?Sized>(
+    source: &S,
+    config: &CarverConfig,
+) -> Result<Vec<CarvedFile>, ReadError> {
     let mut files = Vec::new();
     let mut next_scan_offset = 0_u64;
     let size_bytes = source.size_bytes();
@@ -47,7 +80,18 @@ pub fn carve_source<S: BlockSource + ?Sized>(
         }
 
         let mut buf = vec![0_u8; bytes_to_read];
-        let read_res = source.read_at(offset, &mut buf)?;
+        let read_res = match source.read_at(offset, &mut buf) {
+            Ok(read_res) => read_res,
+            Err(ReadError::Io(_)) => {
+                let next = offset.saturating_add(bytes_to_read as u64).min(size_bytes);
+                if next <= offset {
+                    break;
+                }
+                offset = next;
+                continue;
+            }
+            Err(error) => return Err(error),
+        };
         if read_res.bytes_read == 0 {
             break;
         }
@@ -253,6 +297,103 @@ fn finalize_carved_files(mut files: Vec<CarvedFile>) -> Vec<CarvedFile> {
         unique_files.push(file);
     }
     unique_files
+}
+
+struct TrackingSource<'a, S: BlockSource + ?Sized> {
+    source: &'a S,
+    unreadable_ranges: Mutex<Vec<UnreadableRange>>,
+}
+
+impl<'a, S: BlockSource + ?Sized> TrackingSource<'a, S> {
+    fn new(source: &'a S) -> Self {
+        Self {
+            source,
+            unreadable_ranges: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn unreadable_ranges(&self) -> Vec<UnreadableRange> {
+        let mut ranges = self
+            .unreadable_ranges
+            .lock()
+            .expect("tracking source lock must not be poisoned")
+            .clone();
+        ranges.sort_by_key(|range| (range.offset, range.errno));
+
+        let mut merged: Vec<UnreadableRange> = Vec::with_capacity(ranges.len());
+        for range in ranges {
+            let mut merged_into_previous = false;
+            if let Some(previous) = merged.last_mut() {
+                if previous.errno == range.errno
+                    && previous.offset.saturating_add(previous.length) >= range.offset
+                {
+                    let previous_end = previous.offset.saturating_add(previous.length);
+                    let range_end = range.offset.saturating_add(range.length);
+                    let end = previous_end.max(range_end);
+                    previous.length = end.saturating_sub(previous.offset);
+                    merged_into_previous = true;
+                }
+            }
+            if !merged_into_previous {
+                merged.push(range);
+            }
+        }
+        merged
+    }
+
+    fn record_error(&self, offset: u64, length: usize, error: &ReadError) {
+        let sector_size = u64::from(self.sector_size().max(1));
+        let start = (offset / sector_size) * sector_size;
+        let requested_end = offset
+            .saturating_add(length.max(1) as u64)
+            .min(self.size_bytes());
+        let end = requested_end
+            .saturating_add(sector_size.saturating_sub(1))
+            .checked_div(sector_size)
+            .unwrap_or(0)
+            .saturating_mul(sector_size)
+            .min(self.size_bytes());
+        let length = end
+            .saturating_sub(start)
+            .max(sector_size.min(self.size_bytes().saturating_sub(start)));
+        if length == 0 {
+            return;
+        }
+        let errno = match error {
+            ReadError::Io(error) => error.raw_os_error().unwrap_or(-1),
+            _ => -1,
+        };
+        self.unreadable_ranges
+            .lock()
+            .expect("tracking source lock must not be poisoned")
+            .push(UnreadableRange {
+                offset: start,
+                length,
+                errno,
+            });
+    }
+}
+
+impl<S: BlockSource + ?Sized> BlockSource for TrackingSource<'_, S> {
+    fn device(&self) -> &data_recovery_core::PhysicalDevice {
+        self.source.device()
+    }
+
+    fn read_at(
+        &self,
+        offset: u64,
+        buffer: &mut [u8],
+    ) -> Result<data_recovery_core::ReadResult, ReadError> {
+        match self.source.read_at(offset, buffer) {
+            Ok(result) => Ok(result),
+            Err(error) => {
+                if matches!(error, ReadError::Io(_)) {
+                    self.record_error(offset, buffer.len(), &error);
+                }
+                Err(error)
+            }
+        }
+    }
 }
 
 fn find_png_length<S: BlockSource + ?Sized>(
@@ -1562,6 +1703,30 @@ mod tests {
         }
     }
 
+    struct EioBlockSource {
+        inner: MemBlockSource,
+        bad_offset: u64,
+        bad_length: u64,
+    }
+
+    impl BlockSource for EioBlockSource {
+        fn device(&self) -> &PhysicalDevice {
+            self.inner.device()
+        }
+
+        fn read_at(
+            &self,
+            offset: u64,
+            buffer: &mut [u8],
+        ) -> Result<data_recovery_core::ReadResult, ReadError> {
+            if offset >= self.bad_offset && offset < self.bad_offset.saturating_add(self.bad_length)
+            {
+                return Err(ReadError::Io(std::io::Error::from_raw_os_error(5)));
+            }
+            self.inner.read_at(offset, buffer)
+        }
+    }
+
     fn write_png_chunk(raw: &mut [u8], pos: usize, chunk_type: &[u8; 4], payload: &[u8]) -> usize {
         raw[pos..pos + 4].copy_from_slice(&(payload.len() as u32).to_be_bytes());
         raw[pos + 4..pos + 8].copy_from_slice(chunk_type);
@@ -1612,6 +1777,40 @@ mod tests {
         let carved = carve_source(&source, &config).unwrap();
 
         assert!(carved.is_empty());
+    }
+
+    #[test]
+    fn continues_after_unreadable_sector_and_reports_eio() {
+        let mut raw_data = vec![0_u8; 4096];
+        raw_data[512..520].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        let mut pos = 2000 + 8;
+        raw_data[2000..2008].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        pos = write_png_chunk(
+            &mut raw_data,
+            pos,
+            b"IHDR",
+            &[0, 0, 0, 1, 0, 0, 0, 1, 8, 6, 0, 0, 0],
+        );
+        pos = write_png_chunk(&mut raw_data, pos, b"IDAT", &[0x78]);
+        write_png_chunk(&mut raw_data, pos, b"IEND", &[]);
+
+        let source = EioBlockSource {
+            inner: MemBlockSource::new(raw_data),
+            bad_offset: 512,
+            bad_length: 512,
+        };
+        let report = carve_source_with_report(&source, &CarverConfig::default()).unwrap();
+
+        assert_eq!(report.carved_files.len(), 1);
+        assert_eq!(report.carved_files[0].file_type, "PNG");
+        assert_eq!(
+            report.unreadable_ranges,
+            vec![UnreadableRange {
+                offset: 512,
+                length: 512,
+                errno: 5,
+            }]
+        );
     }
 
     #[test]

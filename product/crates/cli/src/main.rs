@@ -1175,8 +1175,9 @@ fn carve_command(
     let config = data_recovery_file_carver::CarverConfig::default();
 
     println!("Scanning for file signatures with v0.5 format validation...");
-    let carved_files =
-        data_recovery_file_carver::carve_source(&source, &config).map_err(runtime)?;
+    let carve_report =
+        data_recovery_file_carver::carve_source_with_report(&source, &config).map_err(runtime)?;
+    let carved_files = &carve_report.carved_files;
 
     let recovered_dir = out_path.join("recovered");
     let possible_dir = out_path.join("suspect").join("possible");
@@ -1201,7 +1202,7 @@ fn carve_command(
     let mut summaries = Vec::new();
     let mut skipped = 0usize;
 
-    for f in &carved_files {
+    for f in carved_files {
         let mut data = vec![0_u8; f.length as usize];
         let read_res = source.read_at(f.offset, &mut data).map_err(runtime)?;
         if read_res.bytes_read < f.length as usize {
@@ -1257,6 +1258,19 @@ fn carve_command(
     manifest_content.push_str("{\n");
     manifest_content.push_str(&format!("  \"source\": \"{}\",\n", json_escape(path)));
     manifest_content.push_str(&format!("  \"skipped\": {},\n", skipped));
+    manifest_content.push_str("  \"unreadable_ranges\": [\n");
+    for (idx, range) in carve_report.unreadable_ranges.iter().enumerate() {
+        let comma = if idx + 1 == carve_report.unreadable_ranges.len() {
+            ""
+        } else {
+            ","
+        };
+        manifest_content.push_str(&format!(
+            "    {{\"offset\":{},\"length\":{},\"errno\":{}}}{}\n",
+            range.offset, range.length, range.errno, comma
+        ));
+    }
+    manifest_content.push_str("  ],\n");
     manifest_content.push_str("  \"carved_items\": [\n");
     for (idx, item) in summaries.iter().enumerate() {
         let comma = if idx + 1 == summaries.len() { "" } else { "," };
@@ -1291,6 +1305,10 @@ fn carve_command(
                 summaries.iter().filter(|s| s.tier != "high").count()
             );
             println!("Skipped invalid fragments: {}", skipped);
+            println!(
+                "Unreadable ranges: {}",
+                carve_report.unreadable_ranges.len()
+            );
             println!("Results saved to: {}", out_path.display());
             println!("Summary manifest: {}", manifest_path.display());
             for item in &summaries {
