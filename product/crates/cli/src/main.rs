@@ -135,10 +135,13 @@ fn run(args: Vec<String>) -> Result<(), CliError> {
                 let source = FileBlockSource::open(PathBuf::from(path)).map_err(runtime)?;
                 let boot = data_recovery_fs_ntfs::read_boot_sector(&source, volume_offset)
                     .map_err(runtime)?;
-                let record = data_recovery_fs_ntfs::read_mft_record_by_index(
+                let mft_map =
+                    data_recovery_fs_ntfs::read_mft_run_map(&source, &boot, volume_offset)
+                        .map_err(runtime)?;
+                let record = data_recovery_fs_ntfs::read_mft_record_by_index_with_map(
                     &source,
                     &boot,
-                    volume_offset,
+                    &mft_map,
                     record_index as u64,
                 )
                 .map_err(runtime)?;
@@ -498,13 +501,15 @@ fn ntfs_scan_vfs(
 ) -> Result<(), CliError> {
     let source = FileBlockSource::open(PathBuf::from(path)).map_err(runtime)?;
     let boot = data_recovery_fs_ntfs::read_boot_sector(&source, volume_offset).map_err(runtime)?;
+    let mft_map =
+        data_recovery_fs_ntfs::read_mft_run_map(&source, &boot, volume_offset).map_err(runtime)?;
     let mut records = Vec::new();
     let mut skipped_records = 0usize;
     for index in 0..count {
-        match data_recovery_fs_ntfs::read_mft_record_by_index(
+        match data_recovery_fs_ntfs::read_mft_record_by_index_with_map(
             &source,
             &boot,
-            volume_offset,
+            &mft_map,
             index as u64,
         ) {
             Ok(record) => records.push(record),
@@ -561,10 +566,12 @@ fn ntfs_extract(
         data_recovery_safe_writer::verify_open_source_storage(&source, &source_identity)
             .map_err(runtime)?;
     let boot = data_recovery_fs_ntfs::read_boot_sector(&source, volume_offset).map_err(runtime)?;
-    let record = data_recovery_fs_ntfs::read_mft_record_by_index(
+    let mft_map =
+        data_recovery_fs_ntfs::read_mft_run_map(&source, &boot, volume_offset).map_err(runtime)?;
+    let record = data_recovery_fs_ntfs::read_mft_record_by_index_with_map(
         &source,
         &boot,
-        volume_offset,
+        &mft_map,
         record_index as u64,
     )
     .map_err(runtime)?;

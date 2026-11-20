@@ -349,32 +349,213 @@ pub fn read_mft_record<S: BlockSource + ?Sized>(
     MftRecord::parse(&record, bytes_per_sector)
 }
 
+/// Physical mapping for the logical contents of the `$MFT` file.
+///
+/// NTFS may store `$MFT` in multiple non-contiguous data runs.  Callers should
+/// build this map once per volume and reuse it for scans, extraction, and
+/// previews instead of deriving a physical offset from the record index.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MftRunMap {
+    volume_offset: u64,
+    cluster_size: u64,
+    record_size: usize,
+    runs: Vec<DataRun>,
+}
+
+impl MftRunMap {
+    pub fn from_record(
+        boot: &NtfsBootSector,
+        volume_offset: u64,
+        record: &MftRecord,
+    ) -> Result<Self, NtfsError> {
+        let record_size = boot.file_record_size()?;
+        let attribute = record.attributes.iter().find(|attribute| {
+            attribute.header.attribute_type == AttributeType::Data
+                && attribute.header.attribute_name.is_none()
+        });
+        let Some(attribute) = attribute else {
+            return Err(NtfsError::InvalidDataRun { offset: 0 });
+        };
+        let AttributeValue::DataRuns(runs) = &attribute.value else {
+            return Err(NtfsError::InvalidDataRun { offset: 0 });
+        };
+        if runs.is_empty() {
+            return Err(NtfsError::InvalidDataRun { offset: 0 });
+        }
+
+        Ok(Self {
+            volume_offset,
+            cluster_size: boot.cluster_size(),
+            record_size: usize::try_from(record_size)
+                .map_err(|_| NtfsError::InvalidFileRecordSize(usize::MAX))?,
+            runs: runs.clone(),
+        })
+    }
+
+    fn contiguous(boot: &NtfsBootSector, volume_offset: u64) -> Result<Self, NtfsError> {
+        let cluster_size = boot.cluster_size();
+        let cluster_count = boot.total_sectors.div_ceil(boot.sectors_per_cluster as u64);
+        Ok(Self {
+            volume_offset,
+            cluster_size,
+            record_size: usize::try_from(boot.file_record_size()?)
+                .map_err(|_| NtfsError::InvalidFileRecordSize(usize::MAX))?,
+            runs: vec![DataRun {
+                vcn_start: 0,
+                cluster_count,
+                lcn_start: Some(boot.mft_lcn as i64),
+            }],
+        })
+    }
+
+    pub fn record_size(&self) -> usize {
+        self.record_size
+    }
+
+    pub fn runs(&self) -> &[DataRun] {
+        &self.runs
+    }
+
+    pub fn read_record<S: BlockSource + ?Sized>(
+        &self,
+        source: &S,
+        boot: &NtfsBootSector,
+        index: u64,
+    ) -> Result<MftRecord, NtfsError> {
+        if index == 0 {
+            let record_offset = self
+                .volume_offset
+                .checked_add(boot.mft_offset()?)
+                .ok_or(NtfsError::OffsetOverflow)?;
+            return read_mft_record(
+                source,
+                record_offset,
+                self.record_size,
+                boot.bytes_per_sector,
+            );
+        }
+        let logical_offset = index
+            .checked_mul(self.record_size as u64)
+            .ok_or(NtfsError::OffsetOverflow)?;
+        let mut record = vec![0_u8; self.record_size];
+        self.read_logical(source, logical_offset, &mut record)?;
+        MftRecord::parse(&record, boot.bytes_per_sector)
+    }
+
+    fn read_logical<S: BlockSource + ?Sized>(
+        &self,
+        source: &S,
+        logical_offset: u64,
+        buffer: &mut [u8],
+    ) -> Result<(), NtfsError> {
+        let mut cursor = logical_offset;
+        let mut output_offset = 0usize;
+        while output_offset < buffer.len() {
+            let vcn = cursor / self.cluster_size;
+            let offset_in_cluster = cursor % self.cluster_size;
+            let run = self
+                .runs
+                .iter()
+                .find(|run| {
+                    vcn >= run.vcn_start && vcn < run.vcn_start.saturating_add(run.cluster_count)
+                })
+                .ok_or(NtfsError::InvalidDataRun {
+                    offset: output_offset,
+                })?;
+            let run_end = run
+                .vcn_start
+                .saturating_add(run.cluster_count)
+                .saturating_mul(self.cluster_size);
+            let bytes_in_run = run_end
+                .checked_sub(cursor)
+                .ok_or(NtfsError::InvalidDataRun {
+                    offset: output_offset,
+                })?;
+            let bytes_to_read = bytes_in_run.min((buffer.len() - output_offset) as u64) as usize;
+            let target = &mut buffer[output_offset..output_offset + bytes_to_read];
+
+            if let Some(lcn_start) = run.lcn_start {
+                if lcn_start < 0 {
+                    return Err(NtfsError::InvalidDataRun {
+                        offset: output_offset,
+                    });
+                }
+                let physical_offset = self
+                    .volume_offset
+                    .checked_add(
+                        (lcn_start as u64)
+                            .checked_add(vcn - run.vcn_start)
+                            .and_then(|cluster| cluster.checked_mul(self.cluster_size))
+                            .and_then(|offset| offset.checked_add(offset_in_cluster))
+                            .ok_or(NtfsError::OffsetOverflow)?,
+                    )
+                    .ok_or(NtfsError::OffsetOverflow)?;
+                let result = source.read_at(physical_offset, target)?;
+                if result.bytes_read != target.len() {
+                    return Err(NtfsError::Read(ReadError::Io(std::io::Error::new(
+                        std::io::ErrorKind::UnexpectedEof,
+                        "short read while reading NTFS MFT data run",
+                    ))));
+                }
+            } else {
+                target.fill(0);
+            }
+
+            cursor = cursor
+                .checked_add(bytes_to_read as u64)
+                .ok_or(NtfsError::OffsetOverflow)?;
+            output_offset += bytes_to_read;
+        }
+        Ok(())
+    }
+}
+
+/// Reads the `$MFT` record 0 using the boot-sector location and builds its
+/// physical data-run map.  Very small legacy fixtures may omit record 0's
+/// `$DATA` attribute; those use the historical contiguous fallback.
+pub fn read_mft_run_map<S: BlockSource + ?Sized>(
+    source: &S,
+    boot: &NtfsBootSector,
+    volume_offset: u64,
+) -> Result<MftRunMap, NtfsError> {
+    let mft_offset = volume_offset
+        .checked_add(boot.mft_offset()?)
+        .ok_or(NtfsError::OffsetOverflow)?;
+    let record_size = usize::try_from(boot.file_record_size()?)
+        .map_err(|_| NtfsError::InvalidFileRecordSize(usize::MAX))?;
+    let record_zero = read_mft_record(source, mft_offset, record_size, boot.bytes_per_sector)?;
+    let has_data_runlist = record_zero.attributes.iter().any(|attribute| {
+        attribute.header.attribute_type == AttributeType::Data
+            && attribute.header.attribute_name.is_none()
+            && matches!(attribute.value, AttributeValue::DataRuns(_))
+    });
+    if has_data_runlist {
+        MftRunMap::from_record(boot, volume_offset, &record_zero)
+    } else {
+        MftRunMap::contiguous(boot, volume_offset)
+    }
+}
+
+pub fn read_mft_record_by_index_with_map<S: BlockSource + ?Sized>(
+    source: &S,
+    boot: &NtfsBootSector,
+    map: &MftRunMap,
+    index: u64,
+) -> Result<MftRecord, NtfsError> {
+    map.read_record(source, boot, index)
+}
+
 pub fn read_mft_records<S: BlockSource + ?Sized>(
     source: &S,
     boot: &NtfsBootSector,
     volume_offset: u64,
     count: usize,
 ) -> Result<Vec<MftRecord>, NtfsError> {
-    let mft_offset = volume_offset
-        .checked_add(boot.mft_offset()?)
-        .ok_or(NtfsError::OffsetOverflow)?;
-    let record_size = boot.file_record_size()? as usize;
+    let map = read_mft_run_map(source, boot, volume_offset)?;
     let mut records = Vec::with_capacity(count);
 
     for index in 0..count {
-        let record_offset = mft_offset
-            .checked_add(
-                (index as u64)
-                    .checked_mul(record_size as u64)
-                    .ok_or(NtfsError::OffsetOverflow)?,
-            )
-            .ok_or(NtfsError::OffsetOverflow)?;
-        records.push(read_mft_record(
-            source,
-            record_offset,
-            record_size,
-            boot.bytes_per_sector,
-        )?);
+        records.push(map.read_record(source, boot, index as u64)?);
     }
 
     Ok(records)
@@ -389,19 +570,8 @@ pub fn read_mft_record_by_index<S: BlockSource + ?Sized>(
     volume_offset: u64,
     index: u64,
 ) -> Result<MftRecord, NtfsError> {
-    let mft_offset = volume_offset
-        .checked_add(boot.mft_offset()?)
-        .ok_or(NtfsError::OffsetOverflow)?;
-    let record_size = boot.file_record_size()? as usize;
-    let record_offset = mft_offset
-        .checked_add(
-            index
-                .checked_mul(record_size as u64)
-                .ok_or(NtfsError::OffsetOverflow)?,
-        )
-        .ok_or(NtfsError::OffsetOverflow)?;
-
-    read_mft_record(source, record_offset, record_size, boot.bytes_per_sector)
+    let map = read_mft_run_map(source, boot, volume_offset)?;
+    read_mft_record_by_index_with_map(source, boot, &map, index)
 }
 
 /// Best-effort estimate of how many file records exist in the MFT.
@@ -1980,6 +2150,30 @@ mod tests {
         assert_eq!(records.len(), 1);
         assert_eq!(records[0].header.record_number, Some(42));
 
+        std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn reads_mft_record_by_index_through_fragmented_mft_runs() {
+        let mut boot = sample_boot_sector();
+        boot[48..56].copy_from_slice(&1_u64.to_le_bytes());
+        let mut image = vec![0_u8; 40 * 4096];
+        image[..512].copy_from_slice(&boot);
+        image[4096..4096 + 1024].copy_from_slice(&sample_mft_record_with_non_resident_data());
+
+        let record_one_offset = 32 * 4096 + 1024;
+        image[record_one_offset..record_one_offset + 1024]
+            .copy_from_slice(&sample_mft_record_with_attributes());
+
+        let path = temp_file_name();
+        std::fs::write(&path, &image).unwrap();
+        let source = FileBlockSource::open(&path).unwrap();
+        let boot = read_boot_sector(&source, 0).unwrap();
+        let map = read_mft_run_map(&source, &boot, 0).unwrap();
+        assert_eq!(map.runs().len(), 2);
+        let record = read_mft_record_by_index_with_map(&source, &boot, &map, 1).unwrap();
+
+        assert_eq!(record.header.record_number, Some(42));
         std::fs::remove_file(path).unwrap();
     }
 

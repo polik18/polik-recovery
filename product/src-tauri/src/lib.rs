@@ -1958,25 +1958,19 @@ fn read_ntfs_records_tolerant<S: BlockSource + ?Sized>(
     count: usize,
     notify: Option<&tauri::AppHandle>,
 ) -> Result<Vec<data_recovery_fs_ntfs::MftRecord>, String> {
-    let mft_offset = volume_offset
-        .checked_add(boot.mft_offset().map_err(|e| e.to_string())?)
-        .ok_or_else(|| "NTFS MFT 位址計算溢位".to_string())?;
-    let record_size = boot.file_record_size().map_err(|e| e.to_string())? as usize;
+    let mft_map = data_recovery_fs_ntfs::read_mft_run_map(source, boot, volume_offset)
+        .map_err(|e| e.to_string())?;
     let mut records = Vec::new();
     let mut invalid_streak = 0usize;
     let mut first_error: Option<String> = None;
 
     for index in 0..count {
         check_cancelled()?;
-        let record_offset = mft_offset
-            .checked_add((index as u64).saturating_mul(record_size as u64))
-            .ok_or_else(|| "NTFS MFT 紀錄位址計算溢位".to_string())?;
-
-        match data_recovery_fs_ntfs::read_mft_record(
+        match data_recovery_fs_ntfs::read_mft_record_by_index_with_map(
             source,
-            record_offset,
-            record_size,
-            boot.bytes_per_sector,
+            boot,
+            &mft_map,
+            index as u64,
         ) {
             Ok(record) => {
                 invalid_streak = 0;
@@ -2753,11 +2747,13 @@ fn perform_extract(
         "ntfs" => {
             let boot = data_recovery_fs_ntfs::read_boot_sector(&source, offset)
                 .map_err(|e| e.to_string())?;
+            let mft_map = data_recovery_fs_ntfs::read_mft_run_map(&source, &boot, offset)
+                .map_err(|e| e.to_string())?;
             let (record_number, stream_ordinal) = decode_ntfs_selected_id(selected_id)?;
-            let record = data_recovery_fs_ntfs::read_mft_record_by_index(
+            let record = data_recovery_fs_ntfs::read_mft_record_by_index_with_map(
                 &source,
                 &boot,
-                offset,
+                &mft_map,
                 record_number,
             )
             .map_err(|e| e.to_string())?;
@@ -4056,17 +4052,13 @@ async fn read_file_thumbnail(
         "ntfs" => {
             let boot = data_recovery_fs_ntfs::read_boot_sector(&source, offset)
                 .map_err(|e| e.to_string())?;
-            let mft_offset = offset
-                .checked_add(boot.mft_offset().map_err(|e| e.to_string())?)
-                .ok_or("MFT offset overflow")?;
-            let record_size = boot.file_record_size().map_err(|e| e.to_string())? as usize;
-            let rec_offset =
-                mft_offset.saturating_add(record_number.saturating_mul(record_size as u64));
-            let record = data_recovery_fs_ntfs::read_mft_record(
+            let mft_map = data_recovery_fs_ntfs::read_mft_run_map(&source, &boot, offset)
+                .map_err(|e| e.to_string())?;
+            let record = data_recovery_fs_ntfs::read_mft_record_by_index_with_map(
                 &source,
-                rec_offset,
-                record_size,
-                boot.bytes_per_sector,
+                &boot,
+                &mft_map,
+                record_number,
             )
             .map_err(|e| e.to_string())?;
             let mut full =

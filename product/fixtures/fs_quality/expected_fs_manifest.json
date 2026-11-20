@@ -35,6 +35,43 @@
       ]
     },
     {
+      "fs": "ntfs-fragmented",
+      "image": "fixtures/fs_quality/ntfs_fragmented_mft.bin",
+      "scanCommand": [
+        "ntfs-scan-vfs",
+        "--file",
+        "fixtures/fs_quality/ntfs_fragmented_mft.bin",
+        "--count",
+        "9",
+        "--format",
+        "json"
+      ],
+      "expectedEntries": [
+        {
+          "path": "/root",
+          "status": "Allocated",
+          "kind": "Directory",
+          "size": 0
+        },
+        {
+          "path": "/root/report.txt",
+          "status": "Deleted",
+          "kind": "File",
+          "size": 37
+        }
+      ],
+      "extracts": [
+        {
+          "name": "report.txt",
+          "image": "fixtures/fs_quality/ntfs_fragmented_mft.bin",
+          "record": 4,
+          "expectedSha256": "95f540973987d8f70433f3f3cb1a20e789c2f17f9cb0f23834bed4fed1557b5e",
+          "expectedBytes": 37,
+          "status": "Complete"
+        }
+      ]
+    },
+    {
       "fs": "fat32",
       "image": "fixtures/fs_quality/fat32_image.bin",
       "scanCommand": [

@@ -158,6 +158,161 @@ def exfat_file_set(name: str, first_cluster: int, data_len: int, *, deleted: boo
     return bytes(file_entry + stream + name_entry)
 
 
+def align8(value: int) -> int:
+    return (value + 7) & ~7
+
+
+def ntfs_resident_attribute(attribute_type: int, value: bytes, attribute_id: int) -> bytes:
+    length = align8(24 + len(value))
+    attribute = bytearray(length)
+    attribute[0:4] = struct.pack("<I", attribute_type)
+    attribute[4:8] = struct.pack("<I", length)
+    attribute[8] = 0
+    attribute[14:16] = struct.pack("<H", attribute_id)
+    attribute[16:20] = struct.pack("<I", len(value))
+    attribute[20:22] = struct.pack("<H", 24)
+    attribute[24 : 24 + len(value)] = value
+    return bytes(attribute)
+
+
+def ntfs_filename_value(name: str, parent_record: int, real_size: int) -> bytes:
+    value = bytearray(66 + len(name.encode("utf-16le")))
+    value[0:8] = struct.pack("<Q", parent_record)
+    value[40:48] = struct.pack("<Q", real_size)
+    value[48:56] = struct.pack("<Q", real_size)
+    value[56:60] = struct.pack("<I", 0x10 if real_size == 0 else 0x20)
+    value[64] = len(name)
+    value[65] = 1  # Win32 namespace
+    value[66:] = name.encode("utf-16le")
+    return bytes(value)
+
+
+def ntfs_record(
+    record_number: int,
+    *,
+    name: str | None = None,
+    parent_record: int = 0,
+    real_size: int = 0,
+    in_use: bool = True,
+    directory: bool = False,
+    resident_data: bytes | None = None,
+    mft_mapping_pairs: bytes | None = None,
+    mft_real_size: int = 0,
+) -> bytes:
+    record = bytearray(1024)
+    record[0:4] = b"FILE"
+    record[4:6] = struct.pack("<H", 0x30)
+    record[6:8] = struct.pack("<H", 3)
+    record[8:16] = struct.pack("<Q", 0x504F4C494D4654 + record_number)
+    record[16:18] = struct.pack("<H", 1)
+    record[18:20] = struct.pack("<H", 1)
+    record[20:22] = struct.pack("<H", 0x38)
+    record[22:24] = struct.pack("<H", (1 if in_use else 0) | (2 if directory else 0))
+    record[28:32] = struct.pack("<I", 1024)
+    record[32:40] = struct.pack("<Q", 0)
+    record[40:42] = struct.pack("<H", 1)
+    record[44:48] = struct.pack("<I", record_number)
+
+    attributes = bytearray()
+    attribute_id = 0
+    if name is not None:
+        attributes.extend(ntfs_resident_attribute(0x30, ntfs_filename_value(name, parent_record, real_size), attribute_id))
+        attribute_id += 1
+    if resident_data is not None:
+        attributes.extend(ntfs_resident_attribute(0x80, resident_data, attribute_id))
+        attribute_id += 1
+    if mft_mapping_pairs is not None:
+        length = align8(0x40 + len(mft_mapping_pairs))
+        attribute = bytearray(length)
+        attribute[0:4] = struct.pack("<I", 0x80)
+        attribute[4:8] = struct.pack("<I", length)
+        attribute[8] = 1
+        attribute[32:34] = struct.pack("<H", 0x40)
+        attribute[40:48] = struct.pack("<Q", mft_real_size)
+        attribute[48:56] = struct.pack("<Q", mft_real_size)
+        attribute[56:64] = struct.pack("<Q", mft_real_size)
+        attribute[64 : 64 + len(mft_mapping_pairs)] = mft_mapping_pairs
+        attributes.extend(attribute)
+        attribute_id += 1
+
+    end = 0x38 + len(attributes)
+    record[0x38:end] = attributes
+    record[end : end + 4] = b"\xff\xff\xff\xff"
+    record[24:28] = struct.pack("<I", align8(end + 4))
+    record[0x30:0x36] = b"\xaa\xaa\xcd\xab\xbb\xbb"
+    record[510:512] = b"\xaa\xaa"
+    record[1022:1024] = b"\xaa\xaa"
+    return bytes(record)
+
+
+def build_ntfs_fragmented_mft(out_dir: Path) -> dict[str, object]:
+    total_sectors = 256
+    sectors_per_cluster = 8
+    cluster_size = SECTOR * sectors_per_cluster
+    image = bytearray(total_sectors * SECTOR)
+    recovered_data = b"NTFS fragmented MFT recovery fixture\n"
+
+    boot = bytearray(SECTOR)
+    boot[0:3] = b"\xeb\x52\x90"
+    boot[3:11] = b"NTFS    "
+    boot[11:13] = struct.pack("<H", SECTOR)
+    boot[13] = sectors_per_cluster
+    boot[21] = 0xF8
+    boot[40:48] = struct.pack("<Q", total_sectors)
+    boot[48:56] = struct.pack("<Q", 1)
+    boot[56:64] = struct.pack("<Q", 2)
+    boot[64] = 0xF6  # -10 => 1024-byte MFT records
+    boot[68] = 1
+    boot[72:80] = struct.pack("<Q", 0x20261120)
+    boot[510:512] = b"\x55\xaa"
+    write_at(image, 0, boot)
+
+    # $MFT logical clusters 0..2 are physically split across LCN 1, 10, 20.
+    mapping_pairs = bytes([0x11, 1, 1, 0x11, 1, 9, 0x11, 1, 10, 0])
+    record_zero = ntfs_record(
+        0,
+        mft_mapping_pairs=mapping_pairs,
+        mft_real_size=3 * cluster_size,
+    )
+    write_at(image, cluster_size, record_zero)
+
+    report_record = ntfs_record(
+        4,
+        name="report.txt",
+        parent_record=8,
+        real_size=len(recovered_data),
+        in_use=False,
+        resident_data=recovered_data,
+    )
+    write_at(image, 10 * cluster_size, report_record)
+
+    root_record = ntfs_record(8, name="root", parent_record=8, directory=True)
+    write_at(image, 20 * cluster_size, root_record)
+
+    path = out_dir / "ntfs_fragmented_mft.bin"
+    path.write_bytes(image)
+    image_rel = str(path.relative_to(Path.cwd()))
+    return {
+        "fs": "ntfs-fragmented",
+        "image": image_rel,
+        "scanCommand": ["ntfs-scan-vfs", "--file", image_rel, "--count", "9", "--format", "json"],
+        "expectedEntries": [
+            {"path": "/root", "status": "Allocated", "kind": "Directory", "size": 0},
+            {"path": "/root/report.txt", "status": "Deleted", "kind": "File", "size": len(recovered_data)},
+        ],
+        "extracts": [
+            {
+                "name": "report.txt",
+                "image": image_rel,
+                "record": 4,
+                "expectedSha256": sha256(recovered_data),
+                "expectedBytes": len(recovered_data),
+                "status": "Complete",
+            }
+        ],
+    }
+
+
 def build_exfat_image(out_dir: Path) -> dict[str, object]:
     total_sectors = 48
     cluster_heap_sector = 2
@@ -231,6 +386,7 @@ def build_exfat_image(out_dir: Path) -> dict[str, object]:
 def build_manifest(out_dir: Path) -> dict[str, object]:
     fat32 = build_fat32_image(out_dir)
     exfat = build_exfat_image(out_dir)
+    ntfs_fragmented = build_ntfs_fragmented_mft(out_dir)
     ntfs_extract_data = b"hello recovered data"
     return {
         "version": FIXTURE_VERSION,
@@ -255,6 +411,7 @@ def build_manifest(out_dir: Path) -> dict[str, object]:
                     }
                 ],
             },
+            ntfs_fragmented,
             fat32,
             exfat,
         ],

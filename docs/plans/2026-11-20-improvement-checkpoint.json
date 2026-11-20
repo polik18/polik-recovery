@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 15,
-  "updated_at": "2026-11-20T23:32:08+08:00",
+  "revision": 17,
+  "updated_at": "2026-11-20T23:42:29+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -208,15 +208,22 @@
       "title": "NTFS $MFT 依 data runs 讀取",
       "priority": "P1",
       "depends_on": [],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/C5-ntfs-mft-runs",
+      "started_at": "2026-11-20T23:33:28+08:00",
+      "finished_at": "2026-11-20T23:42:29+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "cargo test --locked -p data_recovery_fs_ntfs：20 tests passed / 0 failed，新增 reads_mft_record_by_index_through_fragmented_mft_runs，驗證 record 0 的 unnamed $DATA runlist 將 index 4／8 導向不同實體 LCN。",
+        "新增 MftRunMap／read_mft_run_map；CLI ntfs-scan-vfs、ntfs-extract、ADS lookup、report，以及 Tauri tolerant scan、recovery、thumbnail 均共用同一 map；無 runlist 的既有最小 fixture 維持 contiguous fallback。",
+        "python3 tools/quality/run_fs_quality_gate.py：PASS，scan_entry_match_ratio=100.0%、extract_hash_match_ratio=100.0%；新增 deterministic ntfs-fragmented fixture，$MFT 分於 LCN 1／10／20。",
+        "python3 tools/quality/check_fixture_reproducibility.py：Synthetic corpus is reproducible（20 files）；cargo fmt、cargo check、workspace tests、clippy、security/frontend/diff gate 全部通過。"
+      ],
+      "notes": [
+        "run map 以 record 0 的 unnamed non-resident $DATA mapping pairs 為權威；record 0 本身仍由 boot-sector MFT 起點讀取，避免建立 map 時循環。"
+      ]
     },
     {
       "id": "C6",

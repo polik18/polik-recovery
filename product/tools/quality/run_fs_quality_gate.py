@@ -52,7 +52,7 @@ def main() -> int:
             extract_dir.mkdir(parents=True, exist_ok=True)
             output_path = extract_dir / item["name"]
             image = item.get("image", fixture.get("image"))
-            if fs == "ntfs":
+            if fs.startswith("ntfs"):
                 cmd = [str(cli), "ntfs-extract", "--file", str(image), "--record", str(item["record"]), "--output", str(output_path)]
             elif fs == "fat32":
                 cmd = [str(cli), "fat32-extract", "--file", str(fixture["image"]), "--entry-id", str(item["entryId"]), "--output", str(output_path)]
