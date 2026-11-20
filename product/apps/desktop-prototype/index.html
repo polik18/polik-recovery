@@ -937,6 +937,7 @@ let defaultRecoveryDir = '';
 let progressListenersReady = false;
 let hasTauriRuntime = false;
 let operationInProgress = false;
+let currentJobId = '';
 let lastImagingPlan = null;
 let lastSessionPlan = null;
 let activeSession = null;
@@ -2022,13 +2023,17 @@ function setOperationBusy(on, label='處理中'){
 function isUserCancelError(err){
   return String(err || '').includes('中止') || String(err || '').toLowerCase().includes('cancel');
 }
+function makeJobId(kind){
+  const entropy = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${kind}-${entropy}`;
+}
 async function cancelCurrentOperation(){
   const core = getTauri()?.core;
-  if(!core || !operationInProgress){ return; }
+  if(!core || !operationInProgress || !currentJobId){ return; }
   try{
     setAS('正在送出中止要求...', 'error');
     setScanProgress('正在中止目前作業...');
-    const msg = await core.invoke('cancel_current_operation');
+    const msg = await core.invoke('cancel_current_operation',{jobId:currentJobId});
     setAS(msg || '已送出中止要求。', 'error');
   }catch(err){
     setAS(`中止作業失敗：${err}`, 'error');
@@ -2799,13 +2804,15 @@ async function doScan(){
     return;
   }
   if(!(await confirmRiskBeforeScan())) return;
+  const jobId=makeJobId('scan');
+  currentJobId=jobId;
   const btns=scanButtons();
   const orig=btns.map(b=>[b,b.textContent]);
   btns.forEach(b=>{b.textContent='⏳ 掃描中...';b.disabled=true;});
   setStep(2);setOperationBusy(true, '正在準備掃描...');setAS('正在檢查映像檔與輸出實體磁碟身分...');
   try{
     const scanCount = activeMode==='ntfs' ? ntfsScanCount() : 0;
-    const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount});
+    const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount,jobId});
     $('reportInput').value=res.report;$('vfsInput').value=res.vfs;
     parseInputs(res.entries);void loadRemainingScanPages(res);setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
   }catch(err){
@@ -2813,6 +2820,7 @@ async function doScan(){
     if(isUserCancelError(err)){ setAS('已中止掃描。','error'); }
     else { setAS(`掃描失敗：${err}`,'error');showFriendlyError('掃描失敗', err, '掃描'); }
   }finally{
+    if(currentJobId===jobId) currentJobId='';
     setOperationBusy(false);
     orig.forEach(([b,t])=>{b.textContent=t;b.disabled=false;});
     updatePrimaryActions();
@@ -2824,6 +2832,7 @@ scanButtons().forEach(btn=>btn.addEventListener('click',doScan));
 async function quickRecover(entry, el){
   const core=getTauri()?.core;
   if(!core){ setAS('此功能需要桌面 App 模式。','error'); return; }
+  if(operationInProgress){ setAS('已有另一個掃描／還原作業進行中，請先等待或取消。','error'); return; }
   if(entry.kind==='Directory'){ setAS('資料夾無法單獨救回，請展開後選擇檔案。','error'); return; }
   const outDir = normalizeOutputDir($('outputPath').value.trim() || defaultRecoveryDir);
   const outPath = buildOutputPath(outDir, entry);
@@ -2836,6 +2845,9 @@ async function quickRecover(entry, el){
   // 按鈕改為進行中狀態
   const btns = el.querySelectorAll('.quick-rec, .quick-rec-g');
   btns.forEach(b=>{ b.textContent='⏳'; b.disabled=true; });
+  const jobId=makeJobId('extract');
+  currentJobId=jobId;
+  setOperationBusy(true, '正在準備單一檔案救回...');
   setAS(`正在救回 ${fname(entry.path)}...`);
   try{
     const msg = await core.invoke('run_recovery_extract',{
@@ -2844,6 +2856,7 @@ async function quickRecover(entry, el){
       offset: selectedPartitionOffset,
       selectedId: String(entry.id),
       outputPath: outPath,
+      jobId,
     });
     el.classList.add('rec-ok');
     btns.forEach(b=>{ b.textContent='✅'; b.disabled=false; });
@@ -2851,6 +2864,9 @@ async function quickRecover(entry, el){
   }catch(err){
     btns.forEach(b=>{ b.textContent='⚡ 立刻救回'; b.disabled=false; });
     showFriendlyError(`救回 ${fname(entry.path)} 失敗`, err, '單一救回');
+  }finally{
+    if(currentJobId===jobId) currentJobId='';
+    setOperationBusy(false);
   }
 }
 
@@ -2866,6 +2882,9 @@ async function doExtract(){
   const fp=$('sourcePath').value.trim();
   const outProblem=outputDirProblem();
   if(outProblem){ await showAppNotice('儲存位置需要調整', '⚠️ 儲存位置需要調整：\n'+outProblem); setAS(outProblem,'error'); return; }
+  if(operationInProgress){ setAS('已有另一個掃描／還原作業進行中，請先等待或取消。','error'); return; }
+  const jobId=makeJobId('extract');
+  currentJobId=jobId;
   extractButtons().forEach(b=>{b.textContent='⏳ 還原中...';b.disabled=true;});
   (async()=>{
     setOperationBusy(true, '正在準備批次還原...');
@@ -2874,7 +2893,7 @@ async function doExtract(){
       selectedId:String(entry.id),
       outputPath:buildOutputPath($('outputPath').value.trim(), entry)
     }));
-    const done=await core.invoke('run_recovery_extract_batch',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,items});
+    const done=await core.invoke('run_recovery_extract_batch',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,items,jobId});
     const report=parseRecoveryResult(done, files);
     setAS(`100% - 還原完成：完整成功 ${report.success} 個，隔離 ${report.quarantine} 個，略過 ${report.skipped} 個`,'ok');
     renderRecoveryReport(report);
@@ -2884,6 +2903,7 @@ async function doExtract(){
       else { setAS(`還原失敗：${err}`,'error');showFriendlyError('還原失敗', err, '批次還原'); }
     })
     .finally(()=>{
+      if(currentJobId===jobId) currentJobId='';
       setOperationBusy(false);
       extractButtons().forEach(b=>{b.textContent='💾 還原選取的檔案';b.disabled=false;});
       updatePrimaryActions();

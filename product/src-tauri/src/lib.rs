@@ -3,7 +3,7 @@ use std::collections::{HashMap, VecDeque};
 use std::ops::ControlFlow;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Emitter;
 
 const NTFS_QUICK_SCAN_COUNT: usize = 10_000;
@@ -12,8 +12,12 @@ const NTFS_MAX_SCAN_COUNT: usize = 1_000_000;
 const NTFS_ADS_ID_MASK: u64 = 0x0000_FFFF_FFFF_FFFF;
 const APFS_MAX_EXTRACT_BYTES: u64 = 2 * 1024 * 1024 * 1024;
 
-static CANCEL_REQUESTED: AtomicBool = AtomicBool::new(false);
 const THUMBNAIL_CACHE_CAPACITY: usize = 128;
+
+struct ActiveOperation {
+    job_id: String,
+    cancelled: Arc<AtomicBool>,
+}
 
 struct ThumbnailCache {
     values: HashMap<String, String>,
@@ -22,6 +26,7 @@ struct ThumbnailCache {
 
 static THUMBNAIL_CACHE: OnceLock<Mutex<ThumbnailCache>> = OnceLock::new();
 static SCAN_RESULT_CACHE: OnceLock<Mutex<HashMap<String, Vec<ScanEntryPayload>>>> = OnceLock::new();
+static ACTIVE_OPERATION: OnceLock<Mutex<Option<ActiveOperation>>> = OnceLock::new();
 static SCAN_SEQUENCE: AtomicU64 = AtomicU64::new(1);
 const SCAN_PAGE_SIZE: usize = 500;
 const SCAN_RESULT_CACHE_CAPACITY: usize = 4;
@@ -64,16 +69,63 @@ fn cache_thumbnail(key: String, value: String) {
     }
 }
 
-fn reset_cancellation() {
-    CANCEL_REQUESTED.store(false, Ordering::SeqCst);
+fn active_operation() -> &'static Mutex<Option<ActiveOperation>> {
+    ACTIVE_OPERATION.get_or_init(|| Mutex::new(None))
 }
 
-fn request_cancellation() {
-    CANCEL_REQUESTED.store(true, Ordering::SeqCst);
+fn begin_operation(job_id: &str) -> Result<Arc<AtomicBool>, String> {
+    if job_id.trim().is_empty() {
+        return Err("缺少作業 jobId，已拒絕啟動重作業。".to_string());
+    }
+    let mut active = active_operation()
+        .lock()
+        .map_err(|_| "作業狀態目前無法使用。".to_string())?;
+    if active.is_some() {
+        return Err("已有另一個掃描／還原作業進行中；請先取消或等待它完成。".to_string());
+    }
+    let cancelled = Arc::new(AtomicBool::new(false));
+    *active = Some(ActiveOperation {
+        job_id: job_id.to_string(),
+        cancelled: Arc::clone(&cancelled),
+    });
+    Ok(cancelled)
+}
+
+fn finish_operation(job_id: &str) {
+    if let Ok(mut active) = active_operation().lock() {
+        if active
+            .as_ref()
+            .is_some_and(|operation| operation.job_id == job_id)
+        {
+            *active = None;
+        }
+    }
+}
+
+fn request_cancellation(job_id: &str) -> Result<(), String> {
+    let active = active_operation()
+        .lock()
+        .map_err(|_| "作業狀態目前無法使用。".to_string())?;
+    let Some(operation) = active.as_ref() else {
+        return Err("目前沒有可取消的重作業。".to_string());
+    };
+    if operation.job_id != job_id {
+        return Err("jobId 與目前作業不符，未送出取消要求。".to_string());
+    }
+    operation.cancelled.store(true, Ordering::SeqCst);
+    Ok(())
 }
 
 fn operation_cancelled() -> bool {
-    CANCEL_REQUESTED.load(Ordering::SeqCst)
+    active_operation()
+        .lock()
+        .ok()
+        .and_then(|active| {
+            active
+                .as_ref()
+                .map(|operation| Arc::clone(&operation.cancelled))
+        })
+        .is_some_and(|cancelled| cancelled.load(Ordering::SeqCst))
 }
 
 fn check_cancelled() -> Result<(), String> {
@@ -2437,7 +2489,11 @@ fn perform_scan(
     offset: u64,
     count: usize,
     notify: Option<&tauri::AppHandle>,
+    operation_token: &AtomicBool,
 ) -> Result<ScanResponse, String> {
+    if operation_token.load(Ordering::SeqCst) {
+        return Err("使用者已中止目前作業。".to_string());
+    }
     check_cancelled()?;
     emit_scan_progress(notify, 2, 0, 0, 0, "開啟來源磁碟...");
     let source = open_source(file_path)?;
@@ -3138,6 +3194,7 @@ fn perform_extract(
     offset: u64,
     selected_id: &str,
     output_path: &str,
+    operation_token: &AtomicBool,
 ) -> Result<String, String> {
     if output_path.starts_with("/dev/") {
         return Err("輸出位置不能是磁碟裝置，請選擇資料夾並由程式自動建立檔名。".to_string());
@@ -3155,6 +3212,9 @@ fn perform_extract(
         }
     }
 
+    if operation_token.load(Ordering::SeqCst) {
+        return Err("使用者已中止目前作業。".to_string());
+    }
     check_cancelled()?;
     let output_path = success_output_path(PathBuf::from(output_path));
     let (source_identity, output_identity) =
@@ -3595,6 +3655,7 @@ fn write_batch_recovery_report(req: &BatchExtractRequest, messages: &[String]) -
 fn perform_extract_batch(
     req: BatchExtractRequest,
     notify: Option<&tauri::AppHandle>,
+    operation_token: &AtomicBool,
 ) -> HelperBatchExtractOut {
     if req.items.is_empty() {
         return HelperBatchExtractOut {
@@ -3617,6 +3678,10 @@ fn perform_extract_batch(
     let mut messages = Vec::new();
     let total = req.items.len();
     for (idx, item) in req.items.iter().enumerate() {
+        if operation_token.load(Ordering::SeqCst) {
+            messages.push("⚠️ 已中止批次還原：使用者已中止目前作業。".to_string());
+            break;
+        }
         if let Err(err) = check_cancelled() {
             messages.push(format!("⚠️ 已中止批次還原：{}", err));
             break;
@@ -3646,6 +3711,7 @@ fn perform_extract_batch(
             req.offset,
             &item.selected_id,
             &item.output_path,
+            operation_token,
         ) {
             Ok(msg) => messages.push(msg),
             Err(err) => messages.push(format!("⚠️ 已略過 ID {}：{}", item.selected_id, err)),
@@ -4309,21 +4375,31 @@ async fn run_recovery_scan(
     mode: String,
     offset: u64,
     count: usize,
+    job_id: String,
 ) -> Result<ScanResponse, String> {
-    reset_cancellation();
     validate_image_source_path(&file_path)?;
+    let operation_token = begin_operation(&job_id)?;
     emit_scan_progress(Some(&app), 1, 0, 0, 0, "正在讀取磁碟資料...");
     let scan_app = app.clone();
     let scan_file_path = file_path.clone();
     let scan_mode = mode.clone();
+    let scan_token = Arc::clone(&operation_token);
     let scan_result = tauri::async_runtime::spawn_blocking(move || {
-        perform_scan(&scan_file_path, &scan_mode, offset, count, Some(&scan_app))
+        perform_scan(
+            &scan_file_path,
+            &scan_mode,
+            offset,
+            count,
+            Some(&scan_app),
+            &scan_token,
+        )
     })
     .await
-    .map_err(|error| format!("掃描工作執行緒失敗：{}", error))?;
+    .map_err(|error| format!("掃描工作執行緒失敗：{}", error));
+    finish_operation(&job_id);
+    let scan_result = scan_result?;
     match scan_result {
         Ok(r) => {
-            check_cancelled()?;
             app.emit(
                 "scan-progress",
                 ScanProgressPayload {
@@ -4372,14 +4448,16 @@ async fn run_recovery_extract(
     offset: u64,
     selected_id: String,
     output_path: String,
+    job_id: String,
 ) -> Result<String, String> {
-    reset_cancellation();
     validate_image_source_path(&file_path)?;
+    let operation_token = begin_operation(&job_id)?;
     app.emit("extract-progress", "正在讀取來源磁碟...").ok();
     let extract_file_path = file_path.clone();
     let extract_mode = mode.clone();
     let extract_selected_id = selected_id.clone();
     let extract_output_path = output_path.clone();
+    let extract_token = Arc::clone(&operation_token);
     let extract_result = tauri::async_runtime::spawn_blocking(move || {
         perform_extract(
             &extract_file_path,
@@ -4387,13 +4465,15 @@ async fn run_recovery_extract(
             offset,
             &extract_selected_id,
             &extract_output_path,
+            &extract_token,
         )
     })
     .await
-    .map_err(|error| format!("還原工作執行緒失敗：{}", error))?;
+    .map_err(|error| format!("還原工作執行緒失敗：{}", error));
+    finish_operation(&job_id);
+    let extract_result = extract_result?;
     match extract_result {
         Ok(msg) => {
-            check_cancelled()?;
             app.emit("extract-progress", "100% - 還原完成").ok();
             return Ok(msg);
         }
@@ -4408,12 +4488,13 @@ async fn run_recovery_extract_batch(
     mode: String,
     offset: u64,
     items: Vec<BatchExtractItem>,
+    job_id: String,
 ) -> Result<Vec<String>, String> {
-    reset_cancellation();
     validate_image_source_path(&file_path)?;
     if items.is_empty() {
         return Err("沒有選取任何要還原的檔案。".to_string());
     }
+    let operation_token = begin_operation(&job_id)?;
     app.emit(
         "extract-progress",
         ExtractProgressPayload {
@@ -4431,10 +4512,14 @@ async fn run_recovery_extract_batch(
         items,
     };
     let batch_app = app.clone();
-    let out =
-        tauri::async_runtime::spawn_blocking(move || perform_extract_batch(req, Some(&batch_app)))
-            .await
-            .map_err(|error| format!("批次還原工作執行緒失敗：{}", error))?;
+    let batch_token = Arc::clone(&operation_token);
+    let out = tauri::async_runtime::spawn_blocking(move || {
+        perform_extract_batch(req, Some(&batch_app), &batch_token)
+    })
+    .await
+    .map_err(|error| format!("批次還原工作執行緒失敗：{}", error));
+    finish_operation(&job_id);
+    let out = out?;
     if let Some(err) = out.error {
         return Err(friendly_runtime_error("批次還原", &file_path, &err));
     }
@@ -4452,8 +4537,8 @@ async fn run_recovery_extract_batch(
 }
 
 #[tauri::command]
-async fn cancel_current_operation(app: tauri::AppHandle) -> Result<String, String> {
-    request_cancellation();
+async fn cancel_current_operation(app: tauri::AppHandle, job_id: String) -> Result<String, String> {
+    request_cancellation(&job_id)?;
     app.emit("scan-progress", "正在中止目前掃描 / 還原作業...")
         .ok();
     app.emit("extract-progress", "正在中止目前掃描 / 還原作業...")
@@ -4858,8 +4943,9 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
     use super::{
-        ScanEntryPayload, ScanResponse, check_output_isolation, get_scan_page, open_source,
-        prepare_scan_response, validate_report_open_target,
+        ScanEntryPayload, ScanResponse, begin_operation, check_output_isolation, finish_operation,
+        get_scan_page, open_source, operation_cancelled, prepare_scan_response,
+        request_cancellation, validate_report_open_target,
     };
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -4966,5 +5052,20 @@ mod tests {
         assert_eq!(second_page.entries.len(), 1);
         assert_eq!(second_page.entries[0].id, "500");
         assert_eq!(second_page.next_cursor, None);
+    }
+
+    #[test]
+    fn operation_cancellation_is_scoped_to_matching_job_id() {
+        let token = begin_operation("job-a").unwrap();
+        assert!(!operation_cancelled());
+        assert!(begin_operation("job-b").is_err());
+        assert!(request_cancellation("job-b").is_err());
+        request_cancellation("job-a").unwrap();
+        assert!(token.load(Ordering::SeqCst));
+        assert!(operation_cancelled());
+        finish_operation("job-a");
+        assert!(!operation_cancelled());
+        assert!(begin_operation("job-b").is_ok());
+        finish_operation("job-b");
     }
 }

@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 41,
-  "updated_at": "2026-11-21T02:00:00+08:00",
+  "revision": 42,
+  "updated_at": "2026-11-21T02:15:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -431,15 +431,21 @@
         "P2",
         "P4"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
-      "next_step": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/U4-structured-errors",
+      "started_at": "2026-11-21T02:05:00+08:00",
+      "finished_at": "2026-11-21T02:15:00+08:00",
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "Tauri 以 `ActiveOperation { job_id, Arc<AtomicBool> }` 取代全域 CANCEL_REQUESTED；begin_operation 同時只允許一個掃描／還原作業，finish_operation 只釋放相同 jobId，縮圖與其他輕作業不會重設 token。",
+        "run_recovery_scan、run_recovery_extract、run_recovery_extract_batch 與前端三種重作業均傳遞 `jobId`；cancel_current_operation 必須以相同 jobId 設定 token，錯誤 jobId 不會取消目前作業。",
+        "新增 `operation_cancellation_is_scoped_to_matching_job_id`：第二個 job 被拒絕、錯誤 jobId 不會取消、正確 job 可取消且完成後 token 清理；desktop tests 7 passed。",
+        "python3 scripts/check-product-frontend.py、check-product-security.py、Node syntax、rustfmt、cargo test -p polik-recovery-desktop --locked：全部通過。"
+      ],
+      "notes": [
+        "取消仍在 parser／carver／批次還原的安全檢查點生效；不以強制 kill thread 破壞 safe-writer 的 partial／manifest 契約。"
+      ]
     },
     {
       "id": "U4",
