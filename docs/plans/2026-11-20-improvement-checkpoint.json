@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 26,
-  "updated_at": "2026-11-21T00:18:20+08:00",
+  "revision": 27,
+  "updated_at": "2026-11-21T00:22:46+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -368,14 +368,19 @@
       "title": "輸出位置事前檢查",
       "priority": "P0",
       "depends_on": [],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/U2-output-isolation",
       "started_at": "2026-11-21T00:18:20+08:00",
-      "finished_at": null,
-      "next_step": "新增 check_output_isolation Tauri command，前端在來源／輸出變更時即時檢查 physical-store identity，未通過就停用開始按鈕並顯示門禁原因。",
+      "finished_at": "2026-11-21T00:22:46+08:00",
+      "next_step": null,
       "blockers": [],
-      "evidence": [],
+      "evidence": [
+        "新增 Tauri `check_output_isolation`：使用 safe-writer canonical physical-store resolver，僅讀取來源與輸出最近既存 ancestor，不建立 probe、不寫入；回傳 source/output stores 與隔離結果。",
+        "desktop prototype 在來源／輸出路徑變更、檔案選擇、磁碟選擇與啟動時即時呼叫檢查；檢查 pending／失敗時停止開始按鈕，並在畫面顯示 physical-store 門禁訊息；run_recovery_scan 前另有 fail-closed guard。",
+        "cargo test --workspace --locked --no-fail-fast：全部通過；新增 output_isolation_rejects_raw_source_before_resolver；cargo fmt --all -- --check、cargo clippy --workspace --all-targets --locked -- -D warnings：通過。",
+        "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、git diff --check：通過；fixture reproducibility 22 files；PATH=Rust-1.85.1 make release-safety-gate：raw-device、same-store、fixture-bypass checks passed。"
+      ],
       "notes": []
     },
     {

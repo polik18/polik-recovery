@@ -120,6 +120,15 @@ struct DiskInfo {
 
 #[derive(serde::Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
+struct OutputIsolationCheck {
+    ok: bool,
+    message: String,
+    source_stores: Vec<String>,
+    output_stores: Vec<String>,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
 struct PartitionInfo {
     index: u32,
     offset: u64,
@@ -1759,6 +1768,70 @@ async fn detect_partitions(file_path: String) -> Result<PartitionDetection, Stri
             })
             .collect(),
     })
+}
+
+#[tauri::command]
+async fn check_output_isolation(
+    source_path: String,
+    output_dir: String,
+) -> Result<OutputIsolationCheck, String> {
+    let source = Path::new(source_path.trim());
+    let output_dir = Path::new(output_dir.trim());
+    if source.as_os_str().is_empty() || output_dir.as_os_str().is_empty() {
+        return Ok(OutputIsolationCheck {
+            ok: false,
+            message: "請先選擇來源映像檔與輸出資料夾。".to_string(),
+            source_stores: Vec::new(),
+            output_stores: Vec::new(),
+        });
+    }
+    if source.starts_with("/dev/")
+        || source.to_string_lossy().starts_with(r"\\.\")
+        || source.to_string_lossy().starts_with(r"\\?\")
+    {
+        return Ok(OutputIsolationCheck {
+            ok: false,
+            message: "實體磁碟不可直接掃描，請先建立唯讀映像檔。".to_string(),
+            source_stores: Vec::new(),
+            output_stores: Vec::new(),
+        });
+    }
+
+    // The resolver expects a file-like output path and resolves its nearest
+    // existing ancestor without creating anything. This probe path is never
+    // written; it only lets an already-existing output directory be checked.
+    let probe = output_dir.join(".polik-recovery-output-probe");
+    match resolve_recovery_storage_identities(source, &probe) {
+        Ok((source_identity, output_identity)) => Ok(OutputIsolationCheck {
+            ok: true,
+            message: format!(
+                "來源與輸出已確認位於不同 physical store。來源：{}；輸出：{}",
+                source_identity
+                    .physical_stores
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                output_identity
+                    .physical_stores
+                    .iter()
+                    .cloned()
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            source_stores: source_identity.physical_stores.iter().cloned().collect(),
+            output_stores: output_identity.physical_stores.iter().cloned().collect(),
+        }),
+        Err(error) => Ok(OutputIsolationCheck {
+            ok: false,
+            message: format!(
+                "輸出必須在另一顆實體磁碟（例如外接 USB 硬碟）；安全檢查未通過：{}",
+                error
+            ),
+            source_stores: Vec::new(),
+            output_stores: Vec::new(),
+        }),
+    }
 }
 
 // ── Accurate partition size from diskutil ─────────────────────────────────────
@@ -4498,6 +4571,7 @@ pub fn run() {
             open_session_engineer_report_direct,
             list_disks,
             detect_partitions,
+            check_output_isolation,
             read_file_thumbnail
         ])
         .run(tauri::generate_context!())
@@ -4506,7 +4580,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::{open_source, validate_report_open_target};
+    use super::{check_output_isolation, open_source, validate_report_open_target};
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -4558,5 +4632,18 @@ mod tests {
         let windows_error = open_source(r"\\.\PhysicalDrive999").unwrap_err();
         assert!(mac_error.contains("RAW_DEVICE_UNSUPPORTED"));
         assert!(windows_error.contains("RAW_DEVICE_UNSUPPORTED"));
+    }
+
+    #[test]
+    fn output_isolation_rejects_raw_source_before_resolver() {
+        let result = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(check_output_isolation(
+                "/dev/disk4".to_string(),
+                "/tmp/polik-recovery-output".to_string(),
+            ))
+            .unwrap();
+        assert!(!result.ok);
+        assert!(result.message.contains("實體磁碟不可直接掃描"));
     }
 }

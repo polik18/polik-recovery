@@ -931,6 +931,8 @@ let operationInProgress = false;
 let lastImagingPlan = null;
 let lastSessionPlan = null;
 let activeSession = null;
+let outputIsolation = {pending:false, ok:false, message:'尚未完成來源／輸出 physical store 檢查。', sourceStores:[], outputStores:[]};
+let outputIsolationTicket = 0;
 // 縮圖快取：Map<entryId, base64String | 'loading' | 'error'>
 const thumbCache = new Map();
 let thumbObserver = null;
@@ -1126,7 +1128,44 @@ function outputDirProblem(){
     const sourceDir=source.split('/').slice(0,-1).join('/');
     if(sourceDir && raw.startsWith(sourceDir)) return '儲存資料夾看起來和來源映像檔在同一個位置，為避免覆蓋原資料，請改選其他磁碟或桌面資料夾。';
   }
+  const isolationProblem=outputIsolationProblem();
+  if(isolationProblem) return isolationProblem;
   return '';
+}
+
+function outputIsolationProblem(){
+  if(!getTauri()) return '';
+  const source=($('sourcePath')?.value || '').trim();
+  const output=($('outputPath')?.value || '').trim();
+  if(!source || isRawDevicePath(source) || !output) return '';
+  if(outputIsolation.pending) return '正在檢查來源與輸出是否位於不同實體磁碟，完成前不能開始。';
+  return outputIsolation.ok ? '' : (outputIsolation.message || '輸出位置尚未通過 physical store 隔離檢查。');
+}
+
+async function refreshOutputIsolation(){
+  const core=getTauri()?.core;
+  const source=($('sourcePath')?.value || '').trim();
+  const output=($('outputPath')?.value || '').trim();
+  const ticket=++outputIsolationTicket;
+  if(!core || !source || isRawDevicePath(source) || !output){
+    outputIsolation={pending:false,ok:false,message:'尚未完成來源／輸出 physical store 檢查。',sourceStores:[],outputStores:[]};
+    updatePrimaryActions();
+    return;
+  }
+  outputIsolation={...outputIsolation,pending:true,ok:false,message:'正在檢查來源與輸出是否位於不同實體磁碟。'};
+  updatePrimaryActions();
+  try{
+    const result=await core.invoke('check_output_isolation',{sourcePath:source,outputDir:output});
+    if(ticket!==outputIsolationTicket) return;
+    outputIsolation={pending:false,ok:Boolean(result?.ok),message:result?.message || '輸出位置尚未通過 physical store 隔離檢查。',sourceStores:result?.sourceStores || [],outputStores:result?.outputStores || []};
+    setAS(outputIsolation.message,outputIsolation.ok?'ok':'error');
+  }catch(err){
+    if(ticket!==outputIsolationTicket) return;
+    outputIsolation={pending:false,ok:false,message:`輸出位置安全檢查失敗：${err}` ,sourceStores:[],outputStores:[]};
+    setAS(outputIsolation.message,'error');
+  }
+  updatePrimaryActions();
+  renderRiskPanel();
 }
 
 function selectedDiskInfo(){
@@ -1807,9 +1846,10 @@ function updatePrimaryActions(){
   const scanVisible = hasTauriRuntime && wizStep===1;
   const source=($('sourcePath')?.value || '').trim();
   const sourceReady=Boolean(source) && !isRawDevicePath(source) && !source.startsWith('fixtures/');
+  const scanBlocked=!sourceReady || outputIsolation.pending || !outputIsolation.ok;
   scanButtons().forEach(btn=>{
     btn.style.display = scanVisible ? 'inline-flex' : 'none';
-    btn.disabled = false;
+    btn.disabled = btn.id==='runRealScanTop' && !sourceReady ? false : scanBlocked;
     if(btn.id==='runRealScanTop') btn.textContent=tr(sourceReady?'startScan':'chooseImage');
   });
   const filesCount = selectedFiles().length;
@@ -1970,6 +2010,7 @@ async function showTauri(){
     $('outputPath').value = defaultRecoveryDir;
     renderCommand();
   }
+  refreshOutputIsolation();
   // 監聽掃描/還原進度事件
   if(window.__TAURI__?.event && !progressListenersReady) {
     progressListenersReady = true;
@@ -2466,10 +2507,10 @@ $('sourcePath').addEventListener('input',()=>{
     selectedPartitionOffset=0;
     setAS('實體磁碟不可直接掃描，請先建立唯讀映像檔。','error');
   }
-  renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); updatePrimaryActions();
+  renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); updatePrimaryActions(); refreshOutputIsolation();
 });
-$('sourcePath').addEventListener('change',loadPartitions);
-$('outputPath').addEventListener('input',()=>{ const p=outputDirProblem(); setAS(p,p?'error':''); renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); });
+$('sourcePath').addEventListener('change',()=>{ loadPartitions(); refreshOutputIsolation(); });
+$('outputPath').addEventListener('input',()=>{ const p=outputDirProblem(); setAS(p,p?'error':''); renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); refreshOutputIsolation(); });
 $('ntfsScanProfile')?.addEventListener('change',()=>{ renderCommand(); renderRiskPanel(); setAS($('ntfsScanProfile').value==='auto'?'NTFS 將自動估算完整 MFT 筆數。':'已切換 NTFS 掃描深度。',''); });
 function autoModeFromFs(fsType){
   const f=(fsType||'').toLowerCase();
@@ -2486,7 +2527,7 @@ $('diskSel').addEventListener('change',()=>{
     $('sourcePath').value='';
     selectedPartitionOffset=0;
     setAS('已選擇實體磁碟。請先建立唯讀映像檔，再選擇 .img。','error');
-    renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); updatePrimaryActions();
+    renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); updatePrimaryActions(); refreshOutputIsolation();
     return;
   }
   $('sourcePath').value=v;
@@ -2501,6 +2542,7 @@ $('diskSel').addEventListener('change',()=>{
   renderRiskPanel();
   refreshImageWorkflowPlan();
   refreshSessionWorkflowPlan();
+  refreshOutputIsolation();
 });
 $('btnRefreshDisks').addEventListener('click',loadDisks);
 $('partitionSel')?.addEventListener('change',()=>{
@@ -2532,7 +2574,7 @@ $('browseSource').addEventListener('click',async()=>{
         loadPartitions();
         setAS('已選擇來源映像檔。','ok');
       }
-      renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();updatePrimaryActions();
+      renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();updatePrimaryActions();refreshOutputIsolation();
     }
   }catch(err){setAS(`選擇失敗：${err}`,'error');alert('選擇失敗：\n'+err);}
 });
@@ -2540,7 +2582,7 @@ $('browseOutput').addEventListener('click',async()=>{
   const d=tauriAPI('dialog');if(!d)return;
   try{
     const sel=await d.open({title:'選擇還原檔案要存放的資料夾',directory:true,multiple:false,defaultPath:normalizeOutputDir($('outputPath').value)});
-    if(sel){$('outputPath').value=sel;renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();setAS('已選擇儲存位置。','ok');}
+    if(sel){$('outputPath').value=sel;renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();refreshOutputIsolation();setAS('已選擇儲存位置。','ok');}
   }catch(err){setAS(`選擇失敗：${err}`,'error');alert('選擇失敗：\n'+err);}
 });
 
@@ -2562,6 +2604,12 @@ async function doScan(){
   if(isRawDevicePath(fp)){
     setAS('實體磁碟不可直接掃描，請先建立唯讀映像檔。','error');
     alert('為保護原始磁碟，請先用 ddrescue 或 hdiutil 建立映像檔，再選擇 .img。');
+    return;
+  }
+  const isolationProblem=outputIsolationProblem();
+  if(isolationProblem){
+    setAS(isolationProblem,'error');
+    alert(isolationProblem);
     return;
   }
   if(!confirmRiskBeforeScan()) return;
