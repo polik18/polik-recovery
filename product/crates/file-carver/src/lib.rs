@@ -1,5 +1,6 @@
 use data_recovery_core::{BlockSource, ReadError, Sha256, sha256_hex};
 use memchr::memmem;
+use std::ops::ControlFlow;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -22,6 +23,14 @@ pub struct UnreadableRange {
 pub struct CarveReport {
     pub carved_files: Vec<CarvedFile>,
     pub unreadable_ranges: Vec<UnreadableRange>,
+    pub cancelled: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct CarveProgress {
+    pub scanned_bytes: u64,
+    pub total_bytes: u64,
+    pub files_found: usize,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -58,17 +67,37 @@ pub fn carve_source_with_report<S: BlockSource + ?Sized>(
     config: &CarverConfig,
 ) -> Result<CarveReport, ReadError> {
     let tracked = TrackingSource::new(source);
-    let carved_files = carve_source_impl(&tracked, config)?;
+    let carved_files = carve_source_impl(&tracked, config, None)?.0;
     Ok(CarveReport {
         carved_files,
         unreadable_ranges: tracked.unreadable_ranges(),
+        cancelled: false,
+    })
+}
+
+pub fn carve_source_with_callback<S, F>(
+    source: &S,
+    config: &CarverConfig,
+    mut callback: F,
+) -> Result<CarveReport, ReadError>
+where
+    S: BlockSource + ?Sized,
+    F: FnMut(CarveProgress) -> ControlFlow<()>,
+{
+    let tracked = TrackingSource::new(source);
+    let (carved_files, cancelled) = carve_source_impl(&tracked, config, Some(&mut callback))?;
+    Ok(CarveReport {
+        carved_files,
+        unreadable_ranges: tracked.unreadable_ranges(),
+        cancelled,
     })
 }
 
 fn carve_source_impl<S: BlockSource + ?Sized>(
     source: &S,
     config: &CarverConfig,
-) -> Result<Vec<CarvedFile>, ReadError> {
+    mut callback: Option<&mut dyn FnMut(CarveProgress) -> ControlFlow<()>>,
+) -> Result<(Vec<CarvedFile>, bool), ReadError> {
     let mut files = Vec::new();
     let mut next_scan_offset = 0_u64;
     let size_bytes = source.size_bytes();
@@ -97,6 +126,18 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
             break;
         }
         let buf = &buf[..read_res.bytes_read];
+
+        if let Some(callback) = callback.as_mut() {
+            if callback(CarveProgress {
+                scanned_bytes: offset.saturating_add(read_res.bytes_read as u64),
+                total_bytes: size_bytes,
+                files_found: files.len(),
+            })
+            .is_break()
+            {
+                return Ok((finalize_carved_files(files), true));
+            }
+        }
 
         // Scan only the next candidate signature; memmem avoids six
         // per-byte marker comparisons over every chunk.
@@ -267,7 +308,7 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
         }
     }
 
-    Ok(finalize_carved_files(files))
+    Ok((finalize_carved_files(files), false))
 }
 
 fn next_signature_offset(buffer: &[u8], start: usize) -> Option<usize> {
@@ -1876,6 +1917,26 @@ mod tests {
         assert_eq!(carved[0].file_type, "PNG");
         assert_eq!(carved[0].offset, 100);
         assert_eq!(carved[0].length, (pos - 100) as u64);
+    }
+
+    #[test]
+    fn callback_can_cancel_after_first_chunk() {
+        let source = MemBlockSource::new(vec![0_u8; 4096]);
+        let config = CarverConfig {
+            chunk_size: 512,
+            overlap_size: 32,
+        };
+        let mut progress_events = 0;
+        let report = carve_source_with_callback(&source, &config, |progress| {
+            progress_events += 1;
+            assert!(progress.scanned_bytes <= progress.total_bytes);
+            ControlFlow::Break(())
+        })
+        .unwrap();
+
+        assert!(report.cancelled);
+        assert_eq!(progress_events, 1);
+        assert!(report.carved_files.is_empty());
     }
 
     #[test]

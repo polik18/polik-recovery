@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 32,
-  "updated_at": "2026-11-21T00:45:09+08:00",
+  "revision": 33,
+  "updated_at": "2026-11-21T00:50:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -280,15 +280,20 @@
         "P1",
         "C3"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/P2-carver-streaming",
+      "started_at": "2026-11-21T00:47:00+08:00",
       "finished_at": null,
-      "next_step": null,
+      "next_step": "將 callback 進度／取消契約接到 CLI 與 Tauri carver 掃描，再以大於 RAM 的 sparse fixture 驗證記憶體與每秒進度事件；並行掃描需先以分段邊界測試確認不破壞 C2。",
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "file-carver 新增 `CarveProgress` 與 `carve_source_with_callback`；callback 可在 chunk 邊界回報 scanned_bytes／total_bytes／files_found 並以 ControlFlow::Break 停止後續掃描。",
+        "新增 callback_can_cancel_after_first_chunk；file-carver 10 unit tests、3 format tests、doc-tests 全部通過。"
+      ],
+      "notes": [
+        "目前只完成 callback／取消邊界的第一階段；尚未宣稱串流寫出或多執行緒掃描完成。"
+      ]
     },
     {
       "id": "P3",
