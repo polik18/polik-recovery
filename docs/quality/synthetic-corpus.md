@@ -1,10 +1,10 @@
 # Synthetic Recovery Corpus
 
-> Last local run: 2026-10-02 with Rust 1.85.1 and canonical source `0.2.0-alpha.1`.
+> Last local run: 2026-11-21 with canonical source `0.2.0-alpha.1`; product toolchain is pinned to Rust 1.85.1.
 
 ## Reproducibility
 
-All generators use fixed metadata timestamps, deterministic input bytes and fixed ZIP entry metadata. `tools/quality/check_fixture_reproducibility.py` generates every corpus twice in the same temporary tree and compares SHA-256 for every file. The current run reports 19 byte-identical files.
+All generators use fixed metadata timestamps, deterministic input bytes and fixed ZIP entry metadata. `tools/quality/check_fixture_reproducibility.py` generates every corpus twice in the same temporary tree and compares SHA-256 for every file. The current run reports 22 byte-identical files.
 
 Generated fixtures contain no user disk data. Build and report output goes under ignored `product/target/`.
 

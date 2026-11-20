@@ -2,7 +2,7 @@
 
 > Applies to public artifact `polik-recovery-desktop_0.1.0_aarch64.dmg`  
 > SHA-256: `897967c1a83071a16e6086ff58ca111c22091430b6c904cd479206540169af30`  
-> Updated: 2026-10-05
+> Updated: 2026-11-21
 
 ## Status definitions
 
@@ -22,7 +22,7 @@
 | Windows desktop | `planned` | canonical alpha now type-checks and passes Clippy on Windows, but no MSI/EXE, signed desktop candidate or GitHub Release exists |
 | Valid Developer ID signature | `unsupported` | strict codesign verification fails |
 | Apple notarization | `unsupported` | no stapled ticket |
-| Rebuild from public source | `partial` | canonical source is in `product/`; pinned Rust 1.85.1 local check, 91 Rust tests, 6 Python storage-parser tests and Clippy pass, but remote CI and release artifact reproduction are not yet evidenced |
+| Rebuild from public source | `partial` | canonical source is in `product/`; product pins Rust 1.85.1 and the latest local workspace run recorded 109 Rust tests, but remote CI and release artifact reproduction are not yet evidenced |
 | Bundled privileged helper | `unsupported` | helper is absent from 0.1.0 bundle |
 
 ## Input and safety boundary
@@ -57,7 +57,7 @@
 
 | Capability | Status | Evidence / limitation |
 |---|---|---|
-| PNG/JPEG/PDF/ZIP carving | `experimental` | deterministic synthetic gate finds 6/8 expected items (75%) with 0 false positives at its current threshold; independent precision/recall corpus remains absent |
+| PNG/JPEG/PDF/ZIP carving | `experimental` | deterministic synthetic gate finds 6/8 expected items (75%) with 0 false positives; the historical F3 random-256 MiB corpus produced 11 false JPEGs before C1, and the corrected gate now records 0; independent precision/recall corpus remains absent |
 | MP4 box-walking carving | `experimental` | fragmented files and false positives are not quantified |
 | OLE/CFBF carving | `experimental` | no published precision/recall corpus |
 | SHA-256 output manifest | `experimental` | hash can verify output bytes, not original-file correctness |

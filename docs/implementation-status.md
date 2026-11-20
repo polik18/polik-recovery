@@ -1,7 +1,7 @@
 # Implementation Status
 
-> Updated: 2026-10-06  
-> Working baseline: `main@42458a4c9782b3920426a7c98a2447e9dfdc0c47`  
+> Updated: 2026-11-21
+> Working baseline: `wp/P3-ntfs-batched-read@5a3e937`（usability checkpoint revision 35）
 > Release status: blocked
 
 ## Stage checkpoint
@@ -13,7 +13,7 @@
 | P2 — privileged boundary | `prototype quarantined; redesign pending` | unsafe server/helper modes and CLI raw-read implementations removed; desktop, CLI and file-backed core reject raw-device paths; a signed, authenticated least-privilege helper is not implemented |
 | P3 — physical-device isolation | `regular-image contract implemented` | macOS and Windows callers resolve physical stores and bind live source/output handles; disk-full injection and the valid data/manifest commit-gap reconciliation pass. Raw-device and abrupt-power-loss platform evidence remain blocked |
 | P4 — parser/recovery evidence | `partial` | four deterministic synthetic corpus gates pass and run in CI; independent real-image, malformed-input and broader feature matrices remain |
-| P5 — desktop reliability/security | `in progress` | CSP/hash gate, honest progress and report-open allowlist added; global Tauri API, inline styles, broader path authority and immediate cooperative cancellation remain |
+| P5 — desktop reliability/security | `in progress` | P4/P5 usability work-package commits add spawn_blocking, structured scan pages, virtualized results and bounded thumbnail concurrency; global Tauri API, inline styles, broader path authority and job-token cancellation remain |
 | P6 — platform validation | `Windows source gate partial` | Windows GNU workspace check/Clippy, 83 non-desktop tests and 4 release-profile desktop linked tests pass; release CLI builds. Formal MSVC, installer, VM matrix, signing and removable-media evidence remain |
 | P7 — release supply chain | `free-only implementation in progress` | deterministic SHA-256/CycloneDX/license/provenance evidence generator and verifier added; manual public-repository GitHub/Sigstore attestation workflow is pinned and refuses private repositories. SignPath acceptance, Authenticode, installer evidence and macOS notarization remain blocked |
 | P8 — website/docs | `first pass completed` | claims, CSP, external JS/CSS, keyboard/ARIA and local validators added; visual/browser audit remains |
@@ -36,7 +36,7 @@
 - Unified Cargo/Tauri source metadata on `0.2.0-alpha.1` and pinned Rust 1.85.1.
 - Removed the legacy standalone root helper, AppleScript elevation server, predictable socket/token flow, world-writable socket mode and automatic force-unmount path.
 - Added a source-security regression gate and a commit-SHA-pinned macOS product CI workflow.
-- Passed local workspace formatting, locked compilation, 91 Rust tests, 6 Python storage-parser tests and Clippy with warnings denied.
+- Passed local workspace formatting, locked compilation and 109 Rust tests; the product toolchain remains pinned to Rust 1.85.1, while the latest local run used Rust 1.99.0. Python storage-parser and full workspace Clippy evidence is recorded per checkpoint and must be rerun under the pinned toolchain for release claims.
 - Added a fail-closed physical-store identity contract that rejects unknown identities and any shared physical store before a verified writer call.
 - Removed dd fallback and force-unmount controls; macOS imaging now stops before creating output when `diskutil` cannot prove source/output physical-store separation.
 - Made all four synthetic fixture generators byte-reproducible and added a double-generation regression check.
@@ -90,4 +90,4 @@ On Windows, run `powershell -File scripts/check-windows-product.ps1`; it only us
 
 ## Current blocker
 
-P1 and the P3 regular-image Windows parity work are complete in this uncommitted working tree. Release remains blocked on the P2 production privilege design, P3 raw-device/abrupt-power-loss evidence, P4 correctness corpus, P5 desktop hardening, P6 formal MSVC/installer/platform evidence, and P7 signed/notarized release automation.
+P1 and the P3 regular-image Windows parity work are complete in their work-package commits. Release remains blocked on the P2 production privilege design, P3 raw-device/abrupt-power-loss evidence, P4 correctness corpus, P5 desktop hardening, P6 formal MSVC/installer/platform evidence, and P7 signed/notarized release automation.

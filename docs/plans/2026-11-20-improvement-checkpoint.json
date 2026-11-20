@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 35,
-  "updated_at": "2026-11-21T01:02:00+08:00",
+  "revision": 36,
+  "updated_at": "2026-11-21T01:10:00+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -100,15 +100,20 @@
         "S1",
         "S2"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/P3-ntfs-batched-read",
+      "started_at": "2026-11-21T01:05:00+08:00",
+      "finished_at": "2026-11-21T01:10:00+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "更新 docs/implementation-status.md、docs/capability-matrix.md、docs/quality/synthetic-corpus.md：日期、checkpoint baseline、109 Rust tests、22-file reproducibility、F3 historical false-positive fact 與目前 experimental 邊界已對齊。",
+        "python3 scripts/validate-public-files.py：Public files, links, CSP and release manifest are consistent；git diff --check：通過。"
+      ],
+      "notes": [
+        "product/AGENTS.md 已由使用者保留中的變更提供計畫入口，本次未重寫或納入 commit。"
+      ]
     },
     {
       "id": "C1",
