@@ -72,6 +72,11 @@ fn run(args: Vec<String>) -> Result<(), CliError> {
             println!("bus_type: {:?}", device.bus_type);
             Ok(())
         }
+        "partitions" => {
+            let path = arg_value(&args, "--file")?;
+            let format = output_format(&args)?;
+            partitions(path, format)
+        }
         "hash" => {
             let path = arg_value(&args, "--file")?;
             let offset = parse_u64(arg_value(&args, "--offset")?, "--offset")?;
@@ -399,6 +404,66 @@ fn ntfs_info(path: &str, volume_offset: u64) -> Result<(), CliError> {
         boot.index_buffer_size().map_err(runtime)?
     );
     println!("volume_serial_number: {:016x}", boot.volume_serial_number);
+    Ok(())
+}
+
+fn partitions(path: &str, format: OutputFormat) -> Result<(), CliError> {
+    let source = FileBlockSource::open(PathBuf::from(path)).map_err(runtime)?;
+    let table = data_recovery_partition::detect(&source).map_err(runtime)?;
+    match format {
+        OutputFormat::Text => {
+            println!("source: {}", source.device().platform_path);
+            println!("table: {:?}", table.kind);
+            println!("used_backup_header: {}", table.used_backup_header);
+            for partition in table.partitions {
+                println!(
+                    "{}\toffset={}\tlength={}\tfs={}\tname={}\tbootable={}",
+                    partition.index,
+                    partition.offset,
+                    partition.length,
+                    partition.filesystem.as_deref().unwrap_or("unknown"),
+                    partition.name.as_deref().unwrap_or(""),
+                    partition.bootable
+                );
+            }
+        }
+        OutputFormat::Json => {
+            println!("{{");
+            println!(
+                "  \"source\": \"{}\",",
+                json_escape(&source.device().platform_path)
+            );
+            println!("  \"table\": \"{:?}\",", table.kind);
+            println!("  \"used_backup_header\": {},", table.used_backup_header);
+            println!("  \"partitions\": [");
+            for (index, partition) in table.partitions.iter().enumerate() {
+                let comma = if index + 1 == table.partitions.len() {
+                    ""
+                } else {
+                    ","
+                };
+                println!(
+                    "    {{\"index\":{},\"offset\":{},\"length\":{},\"filesystem\":{},\"name\":{},\"bootable\":{}}}{}",
+                    partition.index,
+                    partition.offset,
+                    partition.length,
+                    partition
+                        .filesystem
+                        .as_deref()
+                        .map(|value| format!("\"{}\"", json_escape(value)))
+                        .unwrap_or_else(|| "null".to_string()),
+                    partition
+                        .name
+                        .as_deref()
+                        .map(|value| format!("\"{}\"", json_escape(value)))
+                        .unwrap_or_else(|| "null".to_string()),
+                    partition.bootable,
+                    comma
+                );
+            }
+            println!("  ]\n}}");
+        }
+    }
     Ok(())
 }
 
@@ -1641,6 +1706,7 @@ fn print_usage() {
   polik-recovery wizard
   polik-recovery devices
   polik-recovery info --file <path>
+  polik-recovery partitions --file <path> [--format text|json]
   polik-recovery hash --file <path> --offset <bytes> --length <bytes> [--chunk-size <bytes>]
   polik-recovery ntfs-info --file <image> [--offset <bytes>]
   polik-recovery ntfs-record-info --file <image> --offset <bytes> [--record-size <bytes>] [--sector-size <bytes>]

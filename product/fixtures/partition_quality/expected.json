@@ -1,0 +1,17 @@
+{
+  "table": "Gpt",
+  "partitions": [
+    {
+      "index": 1,
+      "offset": 17408,
+      "length": 34304,
+      "filesystem": "FAT32"
+    },
+    {
+      "index": 2,
+      "offset": 51712,
+      "length": 61440,
+      "filesystem": "exFAT"
+    }
+  ]
+}

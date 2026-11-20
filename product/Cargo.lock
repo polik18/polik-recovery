@@ -581,6 +581,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "data_recovery_partition"
+version = "0.2.0-alpha.1"
+dependencies = [
+ "data_recovery_core",
+]
+
+[[package]]
 name = "data_recovery_recovery_plan"
 version = "0.2.0-alpha.1"
 dependencies = [
@@ -2372,6 +2379,7 @@ dependencies = [
  "data_recovery_fs_exfat",
  "data_recovery_fs_fat32",
  "data_recovery_fs_ntfs",
+ "data_recovery_partition",
  "data_recovery_recovery_plan",
  "data_recovery_safe_writer",
  "data_recovery_scan_report",
@@ -2391,6 +2399,7 @@ dependencies = [
  "data_recovery_fs_exfat",
  "data_recovery_fs_fat32",
  "data_recovery_fs_ntfs",
+ "data_recovery_partition",
  "data_recovery_recovery_plan",
  "data_recovery_safe_writer",
  "data_recovery_scan_report",

@@ -94,6 +94,7 @@ struct BatchExtractItem {
 struct BatchExtractRequest {
     device: String,
     mode: String,
+    offset: u64,
     items: Vec<BatchExtractItem>,
 }
 
@@ -115,6 +116,25 @@ struct DiskInfo {
     fs_type: String,
     solid_state: bool,
     encrypted: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PartitionInfo {
+    index: u32,
+    offset: u64,
+    length: u64,
+    filesystem: Option<String>,
+    name: Option<String>,
+    bootable: bool,
+}
+
+#[derive(serde::Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct PartitionDetection {
+    table: String,
+    used_backup_header: bool,
+    partitions: Vec<PartitionInfo>,
 }
 
 #[derive(serde::Serialize, Clone)]
@@ -1663,6 +1683,32 @@ async fn list_disks() -> Result<Vec<DiskInfo>, String> {
     list_disks_impl()
 }
 
+#[tauri::command]
+async fn detect_partitions(file_path: String) -> Result<PartitionDetection, String> {
+    let source = open_source(&file_path)?;
+    let table = data_recovery_partition::detect(&source).map_err(|e| e.to_string())?;
+    let kind = match table.kind {
+        data_recovery_partition::PartitionTableKind::Mbr => "MBR",
+        data_recovery_partition::PartitionTableKind::Gpt => "GPT",
+    };
+    Ok(PartitionDetection {
+        table: kind.to_string(),
+        used_backup_header: table.used_backup_header,
+        partitions: table
+            .partitions
+            .into_iter()
+            .map(|partition| PartitionInfo {
+                index: partition.index,
+                offset: partition.offset,
+                length: partition.length,
+                filesystem: partition.filesystem,
+                name: partition.name,
+                bootable: partition.bootable,
+            })
+            .collect(),
+    })
+}
+
 // ── Accurate partition size from diskutil ─────────────────────────────────────
 
 fn diskutil_size_bytes(dev_path: &str) -> u64 {
@@ -3204,7 +3250,7 @@ fn perform_extract_batch(
         match perform_extract(
             &req.device,
             &req.mode,
-            0,
+            req.offset,
             &item.selected_id,
             &item.output_path,
         ) {
@@ -3969,6 +4015,7 @@ async fn run_recovery_extract_batch(
     app: tauri::AppHandle,
     file_path: String,
     mode: String,
+    offset: u64,
     items: Vec<BatchExtractItem>,
 ) -> Result<Vec<String>, String> {
     reset_cancellation();
@@ -3992,6 +4039,7 @@ async fn run_recovery_extract_batch(
         let req = BatchExtractRequest {
             device: file_path.clone(),
             mode: mode.clone(),
+            offset,
             items,
         };
         let out = perform_extract_batch(req, Some(&app));
@@ -4397,6 +4445,7 @@ pub fn run() {
             open_session_customer_report_direct,
             open_session_engineer_report_direct,
             list_disks,
+            detect_partitions,
             read_file_thumbnail
         ])
         .run(tauri::generate_context!())

@@ -22,6 +22,7 @@ data_recovery_safe_writer = { path = "../safe-writer" }
 data_recovery_scan_report = { path = "../scan-report" }
 data_recovery_vfs = { path = "../vfs" }
 data_recovery_file_carver = { path = "../file-carver" }
+data_recovery_partition = { path = "../partition" }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 data_recovery_device_macos = { path = "../device-macos" }

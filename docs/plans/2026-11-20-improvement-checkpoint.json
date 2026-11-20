@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 17,
-  "updated_at": "2026-11-20T23:42:29+08:00",
+  "revision": 19,
+  "updated_at": "2026-11-20T23:52:39+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -230,15 +230,22 @@
       "title": "MBR／GPT 自動偵測與 offset",
       "priority": "P1",
       "depends_on": [],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/C6-partition-detection",
+      "started_at": "2026-11-20T23:43:44+08:00",
+      "finished_at": "2026-11-20T23:52:39+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "新增 data_recovery_partition crate：解析 MBR／GPT、分割區 offset／長度／名稱／filesystem probe；GPT primary header CRC 失敗時回退 backup header，單元測試 3 passed。",
+        "新增 CLI `partitions --file <path> [--format text|json]`；deterministic GPT fixture 含 FAT32＋exFAT 兩分割區，CLI JSON 回報 offset=17408／51712 與正確 filesystem。",
+        "Tauri 新增 detect_partitions command；桌面 prototype 新增分割區選擇，選定 offset 會傳入 scan、單檔／批次 recovery 與 thumbnail；新增 fixture reproducibility corpus（22 files）。",
+        "cargo fmt、cargo check、workspace tests、clippy、security/frontend/diff gate 全部通過。"
+      ],
+      "notes": [
+        "保留 raw-device 既有 fail-closed；分割區偵測僅讀取來源映像／裝置，不執行任何分割區寫入。"
+      ]
     },
     {
       "id": "P1",

@@ -524,6 +524,12 @@
             </div>
           </div>
 
+          <div class="ig" id="partitionPickGroup" style="display:none;">
+            <label for="partitionSel">Partition / volume offset</label>
+            <select id="partitionSel" class="disk-sel"><option value="0">Whole image / offset 0</option></select>
+            <div class="tinyhelp" id="partitionPickHelp">Detect MBR/GPT partitions and carry the selected offset into scan, recovery, and thumbnails.</div>
+          </div>
+
           <div class="ig" id="ntfsScanProfileGroup">
             <label for="ntfsScanProfile" id="ntfsProfileLabel">NTFS scan depth</label>
             <select id="ntfsScanProfile" class="disk-sel">
@@ -916,6 +922,8 @@ let activeFilter = "all";
 let isGrid = false;
 let wizStep = 1;
 let allDisks = [];
+let detectedPartitions = [];
+let selectedPartitionOffset = 0;
 let defaultRecoveryDir = '';
 let progressListenersReady = false;
 let hasTauriRuntime = false;
@@ -1941,7 +1949,9 @@ async function showTauri(){
   $('browseOutput').style.display='inline-flex';
   $('browseSource').style.display='inline-flex';
   $('diskPickGroup').style.display='';
+  $('partitionPickGroup').style.display='';
   loadDisks();
+  loadPartitions();
   refreshDiagnostics();
   // 預設輸出路徑：桌面的「已救援」資料夾
   const core = getTauri()?.core;
@@ -1982,6 +1992,34 @@ async function loadDisks(){
   }
 }
 
+async function loadPartitions(){
+  const core=getTauri()?.core;
+  const group=$('partitionPickGroup');
+  const sel=$('partitionSel');
+  const source=($('sourcePath')?.value || '').trim();
+  if(!core || !group || !sel || !source) return;
+  sel.innerHTML='<option value="0">— 偵測分割區中... —</option>';
+  selectedPartitionOffset=0;
+  try{
+    const result=await core.invoke('detect_partitions',{filePath:source});
+    detectedPartitions=result.partitions || [];
+    sel.innerHTML='<option value="0">整個映像檔（offset 0）</option>';
+    detectedPartitions.forEach(partition=>{
+      const option=document.createElement('option');
+      option.value=String(partition.offset);
+      option.textContent=`${result.table} #${partition.index} · ${partition.filesystem||'unknown'} · offset ${partition.offset} · ${fmtBytes(partition.length)}${partition.name?` · ${partition.name}`:''}`;
+      sel.appendChild(option);
+    });
+    if(detectedPartitions.length===1){
+      sel.value=String(detectedPartitions[0].offset);
+      selectedPartitionOffset=detectedPartitions[0].offset;
+    }
+  }catch(_){
+    detectedPartitions=[];
+    sel.innerHTML='<option value="0">未偵測到有效 MBR/GPT（offset 0）</option>';
+  }
+}
+
 function applyDiskFilter(){
   const sel=$('diskSel');
   const prev=sel.value;
@@ -2005,7 +2043,7 @@ function applyDiskFilter(){
     sel.value=prev;
   } else {
     const pref=list.find(d=>d.removable)||list[0];
-    if(pref){sel.value=pref.path;$('sourcePath').value=pref.path;renderCommand();renderRiskPanel();}
+    if(pref){sel.value=pref.path;$('sourcePath').value=pref.path;loadPartitions();renderCommand();renderRiskPanel();}
   }
   renderRiskPanel();
 }
@@ -2283,7 +2321,7 @@ function setupThumbObserver(){
           filePath: $('sourcePath').value.trim(),
           mode: activeMode,
           selectedId: entryId,
-          offset: 0,
+          offset: selectedPartitionOffset,
         });
         thumbCache.set(entryId, b64);
         // Update the thumb element in-place
@@ -2401,6 +2439,7 @@ $('copyCommand').addEventListener('click',async()=>{
 });
 
 $('sourcePath').addEventListener('input',()=>{ renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); });
+$('sourcePath').addEventListener('change',loadPartitions);
 $('outputPath').addEventListener('input',()=>{ const p=outputDirProblem(); setAS(p,p?'error':''); renderCommand(); renderRiskPanel(); refreshImageWorkflowPlan(); refreshSessionWorkflowPlan(); });
 $('ntfsScanProfile')?.addEventListener('change',()=>{ renderCommand(); renderRiskPanel(); setAS($('ntfsScanProfile').value==='auto'?'NTFS 將自動估算完整 MFT 筆數。':'已切換 NTFS 掃描深度。',''); });
 function autoModeFromFs(fsType){
@@ -2421,12 +2460,18 @@ $('diskSel').addEventListener('change',()=>{
     if(suggested!==activeMode) setModeConfig(suggested);
     if(suggested==='carver') setAS('此分割區格式（'+disk.fs_type+'）沒有專屬解析器，已切換至深度碎塊掃描。','');
   }
+  loadPartitions();
   renderCommand();
   renderRiskPanel();
   refreshImageWorkflowPlan();
   refreshSessionWorkflowPlan();
 });
 $('btnRefreshDisks').addEventListener('click',loadDisks);
+$('partitionSel')?.addEventListener('change',()=>{
+  selectedPartitionOffset=Number($('partitionSel').value||0);
+  renderCommand();
+  renderRiskPanel();
+});
 
 // ── Tauri ──
 showTauri();
@@ -2440,7 +2485,7 @@ $('browseSource').addEventListener('click',async()=>{
   const d=tauriAPI('dialog');if(!d)return;
   try{
     const sel=await d.open({title:'選擇來源磁碟映像或設備',multiple:false});
-    if(sel){$('sourcePath').value=Array.isArray(sel)?sel[0]:sel;renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();setAS('已選擇來源路徑。','ok');}
+    if(sel){$('sourcePath').value=Array.isArray(sel)?sel[0]:sel;loadPartitions();renderCommand();renderRiskPanel();refreshImageWorkflowPlan();refreshSessionWorkflowPlan();setAS('已選擇來源路徑。','ok');}
   }catch(err){setAS(`選擇失敗：${err}`,'error');alert('選擇失敗：\n'+err);}
 });
 $('browseOutput').addEventListener('click',async()=>{
@@ -2471,7 +2516,7 @@ async function doScan(){
   setStep(2);setOperationBusy(true, '正在準備掃描...');setAS('正在檢查映像檔與輸出實體磁碟身分...');
   try{
     const scanCount = activeMode==='ntfs' ? ntfsScanCount() : 0;
-    const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:0,count:scanCount});
+    const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount});
     $('reportInput').value=res.report;$('vfsInput').value=res.vfs;
     parseInputs();setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
   }catch(err){
@@ -2507,7 +2552,7 @@ async function quickRecover(entry, el){
     const msg = await core.invoke('run_recovery_extract',{
       filePath: $('sourcePath').value.trim(),
       mode: activeMode,
-      offset: 0,
+      offset: selectedPartitionOffset,
       selectedId: String(entry.id),
       outputPath: outPath,
     });
@@ -2540,7 +2585,7 @@ function doExtract(){
       selectedId:String(entry.id),
       outputPath:buildOutputPath($('outputPath').value.trim(), entry)
     }));
-    const done=await core.invoke('run_recovery_extract_batch',{filePath:fp,mode:activeMode,items});
+    const done=await core.invoke('run_recovery_extract_batch',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,items});
     const report=parseRecoveryResult(done, files);
     setAS(`100% - 還原完成：完整成功 ${report.success} 個，隔離 ${report.quarantine} 個，略過 ${report.skipped} 個`,'ok');
     renderRecoveryReport(report);

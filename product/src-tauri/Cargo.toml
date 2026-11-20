@@ -37,6 +37,7 @@ data_recovery_safe_writer = { path = "../crates/safe-writer" }
 data_recovery_scan_report = { path = "../crates/scan-report" }
 data_recovery_vfs = { path = "../crates/vfs" }
 data_recovery_file_carver = { path = "../crates/file-carver" }
+data_recovery_partition = { path = "../crates/partition" }
 data_recovery_device_macos = { path = "../crates/device-macos" }
 data_recovery_device_windows = { path = "../crates/device-windows" }
 

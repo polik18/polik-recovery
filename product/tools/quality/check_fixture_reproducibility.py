@@ -16,6 +16,7 @@ GENERATORS = (
     "generate_fs_fixtures.py",
     "generate_fragmented_fixtures.py",
     "generate_apfs_fixtures.py",
+    "generate_partition_fixture.py",
 )
 
 

@@ -12,6 +12,7 @@ members = [
     "crates/scan-report",
     "crates/vfs",
     "crates/recovery-plan",
+    "crates/partition",
     "crates/cli",
     "src-tauri",
 ]
