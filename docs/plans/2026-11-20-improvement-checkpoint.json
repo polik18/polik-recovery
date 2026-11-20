@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 23,
-  "updated_at": "2026-11-21T00:05:22+08:00",
+  "revision": 25,
+  "updated_at": "2026-11-21T00:16:34+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -186,7 +186,7 @@
       "depends_on": [
         "C3"
       ],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/C4-unreadable-ranges",
       "started_at": "2026-11-20T23:27:16+08:00",
@@ -208,7 +208,7 @@
       "title": "NTFS $MFT 依 data runs 讀取",
       "priority": "P1",
       "depends_on": [],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/C5-ntfs-mft-runs",
       "started_at": "2026-11-20T23:33:28+08:00",
@@ -230,7 +230,7 @@
       "title": "MBR／GPT 自動偵測與 offset",
       "priority": "P1",
       "depends_on": [],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/C6-partition-detection",
       "started_at": "2026-11-20T23:43:44+08:00",
@@ -255,20 +255,21 @@
         "S3",
         "C1"
       ],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/P1-carver-prefilter",
       "started_at": "2026-11-20T23:53:58+08:00",
-      "finished_at": null,
-      "next_step": "將 ZIP／MP4 長度判定改成可跨 chunk 的串流掃描，並讓長度判定與 SHA-256 共用讀取；目前 64 KB bounded window 只作為暫時候選防護。",
+      "finished_at": "2026-11-21T00:16:34+08:00",
+      "next_step": null,
       "blockers": [],
       "evidence": [
-        "新增 memchr::memmem candidate prefilter，取代每個 chunk 逐 byte 比對六種 signature；file-carver 7 unit tests、3 format tests、workspace clippy 通過。",
-        "python3 tools/bench/run_carver_bench.py --enforce-random-zero：random carved=0／1912.06 MiB/s、PK-dense=0／1949.57 MiB/s／peak RSS 2375680、ftyp-dense=0／2650.58 MiB/s／peak RSS 2375680；random peak RSS 51429376 bytes。",
+        "新增 memchr::memmem candidate prefilter，取代每個 chunk 逐 byte 比對六種 signature；file-carver 9 unit tests、3 format tests、workspace clippy 通過。",
+        "ZIP／MP4 length finder 改為結構前綴快速拒絕後的 64 KiB chunk streaming；長檔案測試分別將 ZIP EOCD 與 MP4 mdat 放在 64 KiB 後，兩項均成功完整 carving，並以同一份串流資料供格式驗證與 SHA-256，移除 64 KiB valid-file 上限。",
+        "python3 tools/bench/run_carver_bench.py --enforce-random-zero：random carved=0／1926.51 MiB/s、PK-dense carved=0／2644.13 MiB/s、ftyp-dense carved=0／2726.54 MiB/s；random peak RSS 51412992 bytes，dense peak RSS 約 2.3 MB。",
         "python3 tools/quality/run_quality_gate.py：PASS，found ratio 75.0%、high-confidence usable 100%、false positives 0；security/frontend/diff gate 通過。"
       ],
       "notes": [
-        "目前 ZIP／MP4 length finder 採 <=64 KB bounded window，已解決 dense 負樣本的高 RSS／低吞吐，但尚未滿足大型有效檔案的跨 chunk streaming 與 length/hash 單次讀取完整規格，因此保持 in_progress。"
+        "ZIP／MP4 負樣本先驗證 local header／box header，避免 dense corpus 配置大型 buffer；有效候選以串流資料完成長度、格式與 hash。"
       ]
     },
     {

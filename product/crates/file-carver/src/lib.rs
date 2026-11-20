@@ -1,4 +1,4 @@
-use data_recovery_core::{BlockSource, ReadError, sha256_hex};
+use data_recovery_core::{BlockSource, ReadError, Sha256, sha256_hex};
 use memchr::memmem;
 use std::sync::Mutex;
 
@@ -186,55 +186,50 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
 
             // 4. ZIP / Office Open XML — require a coherent EOCD and central directory.
             if i + 4 <= buf.len() && &buf[i..i + 4] == b"PK\x03\x04" {
-                if let Some((len, conf)) = find_zip_length(source, abs_pos, 120 * 1024 * 1024) {
-                    if let Ok(file_data) = read_file_data(source, abs_pos, len) {
-                        let validation = validate_carved_bytes("ZIP", &file_data);
-                        if !is_mostly_padding(&file_data) && validation.ok {
-                            record_carved_file(
-                                &mut files,
-                                &mut next_scan_offset,
-                                CarvedFile {
-                                    file_type: "ZIP".to_string(),
-                                    offset: abs_pos,
-                                    length: len,
-                                    sha256: sha256_hex(&file_data),
-                                    confidence: conf.min(validation.confidence),
-                                },
-                            );
-                            i += len as usize;
-                            continue;
-                        }
+                if let Some(candidate) = read_zip_candidate(source, abs_pos, 120 * 1024 * 1024) {
+                    let validation = validate_carved_bytes("ZIP", &candidate.bytes);
+                    if !is_mostly_padding(&candidate.bytes) && validation.ok {
+                        record_carved_file(
+                            &mut files,
+                            &mut next_scan_offset,
+                            CarvedFile {
+                                file_type: "ZIP".to_string(),
+                                offset: abs_pos,
+                                length: candidate.bytes.len() as u64,
+                                sha256: candidate.sha256,
+                                confidence: validation.confidence,
+                            },
+                        );
+                        i += candidate.bytes.len();
+                        continue;
                     }
                 }
             }
 
             // 5. MP4 / MOV — require ftyp + real media boxes, not any random "ftyp" string.
             if i + 12 <= buf.len() && &buf[i + 4..i + 8] == b"ftyp" {
-                if let Some((len, conf)) = find_mp4_length(source, abs_pos, 250 * 1024 * 1024) {
-                    if let Ok(file_data) = read_file_data(source, abs_pos, len) {
-                        let validation = validate_carved_bytes("MP4", &file_data);
-                        if !is_mostly_padding(&file_data) && validation.ok {
-                            let file_type = if validation.extension == "heic"
-                                || validation.extension == "heif"
-                            {
+                if let Some(candidate) = read_mp4_candidate(source, abs_pos, 250 * 1024 * 1024) {
+                    let validation = validate_carved_bytes("MP4", &candidate.bytes);
+                    if !is_mostly_padding(&candidate.bytes) && validation.ok {
+                        let file_type =
+                            if validation.extension == "heic" || validation.extension == "heif" {
                                 "HEIC"
                             } else {
                                 "MP4"
                             };
-                            record_carved_file(
-                                &mut files,
-                                &mut next_scan_offset,
-                                CarvedFile {
-                                    file_type: file_type.to_string(),
-                                    offset: abs_pos,
-                                    length: len,
-                                    sha256: sha256_hex(&file_data),
-                                    confidence: conf.min(validation.confidence),
-                                },
-                            );
-                            i += len as usize;
-                            continue;
-                        }
+                        record_carved_file(
+                            &mut files,
+                            &mut next_scan_offset,
+                            CarvedFile {
+                                file_type: file_type.to_string(),
+                                offset: abs_pos,
+                                length: candidate.bytes.len() as u64,
+                                sha256: candidate.sha256,
+                                confidence: validation.confidence,
+                            },
+                        );
+                        i += candidate.bytes.len();
+                        continue;
                     }
                 }
             }
@@ -1401,115 +1396,204 @@ fn find_pdf_length<S: BlockSource + ?Sized>(
     }
 }
 
-fn find_zip_length<S: BlockSource + ?Sized>(
-    source: &S,
-    start_offset: u64,
-    max_size: u64,
-) -> Option<(u64, f32)> {
-    let buf = read_window(source, start_offset, max_size.min(64 * 1024))?;
-    if buf.len() < 64 || !buf.starts_with(b"PK\x03\x04") {
-        return None;
-    }
-
-    let mut search_from = 0usize;
-    let mut best_end = None;
-    while let Some(rel) = find_subsequence(&buf[search_from..], b"PK\x05\x06") {
-        let pos = search_from + rel;
-        if pos + 22 <= buf.len() {
-            let cd_entries = u16::from_le_bytes([buf[pos + 10], buf[pos + 11]]) as u32;
-            let cd_size =
-                u32::from_le_bytes([buf[pos + 12], buf[pos + 13], buf[pos + 14], buf[pos + 15]])
-                    as usize;
-            let cd_offset =
-                u32::from_le_bytes([buf[pos + 16], buf[pos + 17], buf[pos + 18], buf[pos + 19]])
-                    as usize;
-            let comment_len = u16::from_le_bytes([buf[pos + 20], buf[pos + 21]]) as usize;
-            let end = pos + 22 + comment_len;
-            let cd_ok =
-                cd_entries > 0 && cd_offset <= pos && cd_offset.saturating_add(cd_size) <= pos;
-            if end <= buf.len() && cd_ok {
-                best_end = Some(end);
-            }
-        }
-        search_from = pos + 4;
-    }
-
-    best_end.and_then(|end| {
-        let inspection = inspect_zip(&buf[..end])?;
-        if inspection.score >= 0.70 {
-            Some((end as u64, inspection.score))
-        } else {
-            None
-        }
-    })
+struct CandidateData {
+    bytes: Vec<u8>,
+    sha256: String,
 }
 
-fn find_mp4_length<S: BlockSource + ?Sized>(
+fn append_source_range<S: BlockSource + ?Sized>(
+    source: &S,
+    start_offset: u64,
+    length: u64,
+    output: &mut Vec<u8>,
+    hasher: &mut Sha256,
+) -> Option<()> {
+    let mut offset = start_offset;
+    let end = start_offset.checked_add(length)?;
+    let mut chunk = vec![0_u8; 64 * 1024];
+    while offset < end {
+        let take = (end - offset).min(chunk.len() as u64) as usize;
+        let read = source.read_at(offset, &mut chunk[..take]).ok()?;
+        if read.bytes_read == 0 || read.bytes_read > take {
+            return None;
+        }
+        output.extend_from_slice(&chunk[..read.bytes_read]);
+        hasher.update(&chunk[..read.bytes_read]);
+        offset = offset.checked_add(read.bytes_read as u64)?;
+    }
+    Some(())
+}
+
+fn read_zip_candidate<S: BlockSource + ?Sized>(
     source: &S,
     start_offset: u64,
     max_size: u64,
-) -> Option<(u64, f32)> {
-    let buf = read_window(source, start_offset, max_size.min(64 * 1024))?;
-    if buf.len() < 24 || &buf[4..8] != b"ftyp" {
+) -> Option<CandidateData> {
+    let mut local_header = [0_u8; 30];
+    let local_read = source.read_at(start_offset, &mut local_header).ok()?;
+    if local_read.bytes_read < local_header.len() || !local_header.starts_with(b"PK\x03\x04") {
+        return None;
+    }
+    let version_needed = u16::from_le_bytes([local_header[4], local_header[5]]);
+    let flags = u16::from_le_bytes([local_header[6], local_header[7]]);
+    let method = u16::from_le_bytes([local_header[8], local_header[9]]);
+    let name_len = u16::from_le_bytes([local_header[26], local_header[27]]) as u64;
+    let extra_len = u16::from_le_bytes([local_header[28], local_header[29]]) as u64;
+    if !(10..=63).contains(&version_needed)
+        || flags & 0xE000 != 0
+        || method > 99
+        || name_len == 0
+        || name_len > 4096
+        || 30_u64.saturating_add(name_len).saturating_add(extra_len)
+            > source.size_bytes().saturating_sub(start_offset)
+    {
         return None;
     }
 
-    let mut offset = 0usize;
-    let mut boxes = 0usize;
-    let mut last_good_end = 0usize;
-
-    while offset + 8 <= buf.len() && boxes < 4096 {
-        let mut header_len = 8usize;
-        let mut box_size = u32::from_be_bytes(buf[offset..offset + 4].try_into().ok()?) as u64;
-        let box_type = &buf[offset + 4..offset + 8];
-        if box_size == 1 {
-            if offset + 16 > buf.len() {
-                break;
+    let available = source.size_bytes().checked_sub(start_offset)?.min(max_size);
+    let mut bytes = Vec::with_capacity(available.min(64 * 1024) as usize);
+    let mut hasher = Sha256::new();
+    let mut search_from = 0usize;
+    while bytes.len() < available as usize {
+        let old_len = bytes.len();
+        let next = (available as usize).min(old_len.saturating_add(64 * 1024));
+        append_source_range(
+            source,
+            start_offset + old_len as u64,
+            (next - old_len) as u64,
+            &mut bytes,
+            &mut hasher,
+        )?;
+        while let Some(rel) = memmem::find(&bytes[search_from..], b"PK\x05\x06") {
+            let pos = search_from + rel;
+            if pos + 22 <= bytes.len() {
+                let entries = u16::from_le_bytes([bytes[pos + 10], bytes[pos + 11]]) as u32;
+                let cd_size = u32::from_le_bytes([
+                    bytes[pos + 12],
+                    bytes[pos + 13],
+                    bytes[pos + 14],
+                    bytes[pos + 15],
+                ]) as usize;
+                let cd_offset = u32::from_le_bytes([
+                    bytes[pos + 16],
+                    bytes[pos + 17],
+                    bytes[pos + 18],
+                    bytes[pos + 19],
+                ]) as usize;
+                let comment_len = u16::from_le_bytes([bytes[pos + 20], bytes[pos + 21]]) as usize;
+                let end = pos.checked_add(22)?.checked_add(comment_len)?;
+                let cd_ok =
+                    entries > 0 && cd_offset <= pos && cd_offset.saturating_add(cd_size) <= pos;
+                if end <= bytes.len() && cd_ok {
+                    let inspection = inspect_zip(&bytes[..end])?;
+                    if inspection.score >= 0.70 {
+                        bytes.truncate(end);
+                        return Some(CandidateData {
+                            sha256: sha256_hex(&bytes),
+                            bytes,
+                        });
+                    }
+                }
             }
-            box_size = u64::from_be_bytes(buf[offset + 8..offset + 16].try_into().ok()?);
+            search_from = pos.saturating_add(4);
+        }
+        if next == old_len {
+            break;
+        }
+    }
+    None
+}
+
+fn read_mp4_candidate<S: BlockSource + ?Sized>(
+    source: &S,
+    start_offset: u64,
+    max_size: u64,
+) -> Option<CandidateData> {
+    let available = source.size_bytes().checked_sub(start_offset)?.min(max_size);
+    if available < 24 {
+        return None;
+    }
+    let mut bytes = Vec::with_capacity(64 * 1024);
+    let mut hasher = Sha256::new();
+    let mut offset = 0_u64;
+    let mut boxes = 0usize;
+    let mut saw_moov = false;
+    let mut saw_mdat = false;
+    let mut saw_meta = false;
+    let mut heif_like = false;
+
+    while offset + 8 <= available && boxes < 4096 {
+        let mut header = [0_u8; 16];
+        let header_read = source.read_at(start_offset + offset, &mut header).ok()?;
+        if header_read.bytes_read < 8 {
+            return None;
+        }
+        let mut header_len = 8_u64;
+        let mut box_size = u32::from_be_bytes(header[..4].try_into().ok()?) as u64;
+        if box_size == 1 {
+            if header_read.bytes_read < 16 {
+                return None;
+            }
+            box_size = u64::from_be_bytes(header[8..16].try_into().ok()?);
             header_len = 16;
         } else if box_size == 0 {
-            break;
+            return None;
         }
-        if box_size < header_len as u64 {
-            break;
+        let box_type = &header[4..8];
+        if box_size < header_len
+            || !box_type
+                .iter()
+                .all(|&b| b.is_ascii_alphanumeric() || b == b' ')
+        {
+            return None;
         }
-        let end = offset.checked_add(box_size as usize)?;
-        if end > buf.len() {
-            break;
-        }
-        let valid_type = box_type
-            .iter()
-            .all(|&b| b.is_ascii_alphanumeric() || b == b' ');
-        if !valid_type {
-            break;
+        let end = offset.checked_add(box_size)?;
+        if end > available {
+            return None;
         }
         if boxes == 0 {
             if box_type != b"ftyp" || box_size < 16 {
                 return None;
             }
-            let brand = &buf[offset + 8..offset + 12];
+            let brand = &header[8..12];
             if !brand
                 .iter()
                 .all(|b| b.is_ascii_alphanumeric() || *b == b' ')
             {
                 return None;
             }
+            heif_like = is_heif_brand(brand);
+        }
+        append_source_range(
+            source,
+            start_offset + offset,
+            box_size,
+            &mut bytes,
+            &mut hasher,
+        )?;
+        if box_type == b"moov" {
+            saw_moov = true;
+        }
+        if box_type == b"mdat" {
+            saw_mdat = true;
+        }
+        if box_type == b"meta" {
+            saw_meta = true;
         }
         boxes += 1;
-        last_good_end = end;
         offset = end;
+        if (heif_like && saw_meta) || (!heif_like && saw_moov && saw_mdat) {
+            let inspection = inspect_iso_bmff(&bytes)?;
+            if inspection.score >= 0.70 {
+                return Some(CandidateData {
+                    bytes,
+                    sha256: hasher.finalize_hex(),
+                });
+            }
+            return None;
+        }
     }
-
-    if last_good_end == 0 {
-        return None;
-    }
-    let inspection = inspect_iso_bmff(&buf[..last_good_end])?;
-    if inspection.score >= 0.70 {
-        Some((last_good_end as u64, inspection.score))
-    } else {
-        None
-    }
+    None
 }
 
 fn find_ole_length<S: BlockSource + ?Sized>(
@@ -1895,6 +1979,76 @@ mod tests {
         data[254..].copy_from_slice(b"\xFF\xD9");
 
         assert!(!valid_jpeg_bytes_strict(&data));
+    }
+
+    #[test]
+    fn carves_zip_with_eocd_after_64k_boundary() {
+        let name = b"large.txt";
+        let payload = vec![b'Z'; 70 * 1024];
+        let crc = crc32_concat(&[], &payload);
+        let mut zip = Vec::new();
+        zip.extend_from_slice(b"PK\x03\x04");
+        zip.extend_from_slice(&20_u16.to_le_bytes());
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+        zip.extend_from_slice(&[0; 4]);
+        zip.extend_from_slice(&crc.to_le_bytes());
+        zip.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        zip.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        zip.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+        zip.extend_from_slice(name);
+        zip.extend_from_slice(&payload);
+        let central_offset = zip.len() as u32;
+        zip.extend_from_slice(b"PK\x01\x02");
+        zip.extend_from_slice(&20_u16.to_le_bytes());
+        zip.extend_from_slice(&20_u16.to_le_bytes());
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+        zip.extend_from_slice(&[0; 4]);
+        zip.extend_from_slice(&crc.to_le_bytes());
+        zip.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        zip.extend_from_slice(&(payload.len() as u32).to_le_bytes());
+        zip.extend_from_slice(&(name.len() as u16).to_le_bytes());
+        zip.extend_from_slice(&[0; 6]);
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+        zip.extend_from_slice(&0_u32.to_le_bytes());
+        zip.extend_from_slice(&0_u32.to_le_bytes());
+        zip.extend_from_slice(name);
+        let central_size = zip.len() as u32 - central_offset;
+        zip.extend_from_slice(b"PK\x05\x06");
+        zip.extend_from_slice(&[0; 4]);
+        zip.extend_from_slice(&1_u16.to_le_bytes());
+        zip.extend_from_slice(&1_u16.to_le_bytes());
+        zip.extend_from_slice(&central_size.to_le_bytes());
+        zip.extend_from_slice(&central_offset.to_le_bytes());
+        zip.extend_from_slice(&0_u16.to_le_bytes());
+
+        assert!(inspect_zip(&zip).is_some(), "fixture ZIP should validate");
+        let carved = carve_source(&MemBlockSource::new(zip), &CarverConfig::default()).unwrap();
+        assert_eq!(carved.len(), 1);
+        assert_eq!(carved[0].file_type, "ZIP");
+        assert!(carved[0].length > 64 * 1024);
+    }
+
+    #[test]
+    fn carves_mp4_with_mdat_after_64k_boundary() {
+        fn box_bytes(kind: &[u8; 4], payload: &[u8]) -> Vec<u8> {
+            let mut result = Vec::with_capacity(payload.len() + 8);
+            result.extend_from_slice(&((payload.len() + 8) as u32).to_be_bytes());
+            result.extend_from_slice(kind);
+            result.extend_from_slice(payload);
+            result
+        }
+
+        let mut movie = box_bytes(b"ftyp", b"isom\0\0\x02\0isomiso2mp41");
+        movie.extend_from_slice(&box_bytes(b"moov", &box_bytes(b"mvhd", &[0; 96])));
+        movie.extend_from_slice(&box_bytes(b"mdat", &[b'M'; 70 * 1024]));
+
+        let carved = carve_source(&MemBlockSource::new(movie), &CarverConfig::default()).unwrap();
+        assert_eq!(carved.len(), 1);
+        assert_eq!(carved[0].file_type, "MP4");
+        assert!(carved[0].length > 64 * 1024);
     }
 
     #[test]
