@@ -1,4 +1,5 @@
 use data_recovery_core::{BlockSource, ReadError, sha256_hex};
+use memchr::memmem;
 use std::sync::Mutex;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -97,9 +98,14 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
         }
         let buf = &buf[..read_res.bytes_read];
 
-        // Scan for PNG signature
+        // Scan only the next candidate signature; memmem avoids six
+        // per-byte marker comparisons over every chunk.
         let mut i = 0;
         while i < buf.len() {
+            let Some(candidate) = next_signature_offset(buf, i) else {
+                break;
+            };
+            i = candidate;
             let abs_pos = offset + i as u64;
             if abs_pos < next_scan_offset {
                 i += 1;
@@ -267,6 +273,29 @@ fn carve_source_impl<S: BlockSource + ?Sized>(
     }
 
     Ok(finalize_carved_files(files))
+}
+
+fn next_signature_offset(buffer: &[u8], start: usize) -> Option<usize> {
+    let patterns = [
+        b"\x89PNG\r\n\x1a\n".as_slice(),
+        b"\xff\xd8\xff".as_slice(),
+        b"%PDF-".as_slice(),
+        b"PK\x03\x04".as_slice(),
+        b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1".as_slice(),
+    ];
+    let mut best = patterns
+        .iter()
+        .filter_map(|pattern| memmem::find(&buffer[start..], pattern).map(|index| start + index))
+        .min();
+
+    let ftyp_search_start = start.saturating_add(4);
+    if ftyp_search_start < buffer.len() {
+        if let Some(index) = memmem::find(&buffer[ftyp_search_start..], b"ftyp") {
+            let candidate = ftyp_search_start + index - 4;
+            best = Some(best.map_or(candidate, |current| current.min(candidate)));
+        }
+    }
+    best
 }
 
 fn record_carved_file(files: &mut Vec<CarvedFile>, next_scan_offset: &mut u64, file: CarvedFile) {
@@ -1377,7 +1406,7 @@ fn find_zip_length<S: BlockSource + ?Sized>(
     start_offset: u64,
     max_size: u64,
 ) -> Option<(u64, f32)> {
-    let buf = read_window(source, start_offset, max_size)?;
+    let buf = read_window(source, start_offset, max_size.min(64 * 1024))?;
     if buf.len() < 64 || !buf.starts_with(b"PK\x03\x04") {
         return None;
     }
@@ -1420,7 +1449,7 @@ fn find_mp4_length<S: BlockSource + ?Sized>(
     start_offset: u64,
     max_size: u64,
 ) -> Option<(u64, f32)> {
-    let buf = read_window(source, start_offset, max_size)?;
+    let buf = read_window(source, start_offset, max_size.min(64 * 1024))?;
     if buf.len() < 24 || &buf[4..8] != b"ftyp" {
         return None;
     }

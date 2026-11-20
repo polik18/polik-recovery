@@ -13,3 +13,4 @@ path = "src/lib.rs"
 [dependencies]
 data_recovery_core = { path = "../core" }
 data_recovery_safe_writer = { path = "../safe-writer" }
+memchr = "2.7"

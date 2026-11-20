@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 19,
-  "updated_at": "2026-11-20T23:52:39+08:00",
+  "revision": 21,
+  "updated_at": "2026-11-20T23:56:46+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -255,15 +255,21 @@
         "S3",
         "C1"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
+      "status": "in_progress",
+      "owner": "codex",
+      "branch": "wp/P1-carver-prefilter",
+      "started_at": "2026-11-20T23:53:58+08:00",
       "finished_at": null,
-      "next_step": null,
+      "next_step": "將 ZIP／MP4 長度判定改成可跨 chunk 的串流掃描，並讓長度判定與 SHA-256 共用讀取；目前 64 KB bounded window 只作為暫時候選防護。",
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "新增 memchr::memmem candidate prefilter，取代每個 chunk 逐 byte 比對六種 signature；file-carver 7 unit tests、3 format tests、workspace clippy 通過。",
+        "python3 tools/bench/run_carver_bench.py --enforce-random-zero：random carved=0／1912.06 MiB/s、PK-dense=0／1949.57 MiB/s／peak RSS 2375680、ftyp-dense=0／2650.58 MiB/s／peak RSS 2375680；random peak RSS 51429376 bytes。",
+        "python3 tools/quality/run_quality_gate.py：PASS，found ratio 75.0%、high-confidence usable 100%、false positives 0；security/frontend/diff gate 通過。"
+      ],
+      "notes": [
+        "目前 ZIP／MP4 length finder 採 <=64 KB bounded window，已解決 dense 負樣本的高 RSS／低吞吐，但尚未滿足大型有效檔案的跨 chunk streaming 與 length/hash 單次讀取完整規格，因此保持 in_progress。"
+      ]
     },
     {
       "id": "P2",
