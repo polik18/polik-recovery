@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 9,
-  "updated_at": "2026-11-20T23:18:03+08:00",
+  "revision": 11,
+  "updated_at": "2026-11-20T23:21:24+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -157,15 +157,21 @@
       "title": "BlockSource 讀取契約（pread、讀滿、去 Mutex）",
       "priority": "P1",
       "depends_on": [],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/C3-blocksource-positional-read",
+      "started_at": "2026-11-20T23:19:37+08:00",
+      "finished_at": "2026-11-20T23:21:24+08:00",
       "next_step": null,
       "blockers": [],
-      "evidence": [],
-      "notes": []
+      "evidence": [
+        "cargo test --locked -p data_recovery_core：10 tests passed / 0 failed，含 reads_through_short_reads_until_buffer_is_full。",
+        "cargo fmt --all -- --check、cargo test --workspace --locked --no-fail-fast、cargo clippy --workspace --all-targets --locked -- -D warnings：全部通過。",
+        "git diff --check：通過。"
+      ],
+      "notes": [
+        "FileBlockSource 改為 File＋Unix read_at／Windows seek_read，read_fully 迴圈處理 short read；保留 O_NOFOLLOW、regular-file、source identity 與 raw-device fail-closed 邊界。"
+      ]
     },
     {
       "id": "C4",

@@ -1,7 +1,8 @@
 use std::fs::File;
-use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+
+#[cfg(not(any(unix, windows)))]
+use std::io::{Read, Seek, SeekFrom};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PhysicalDevice {
@@ -106,6 +107,12 @@ pub struct ReadResult {
 
 pub trait BlockSource: Send + Sync {
     fn device(&self) -> &PhysicalDevice;
+
+    /// Read bytes at an absolute offset without changing shared source state.
+    ///
+    /// Implementations may return fewer bytes only when EOF is reached. A
+    /// successful read of a non-empty in-range buffer should otherwise fill
+    /// the buffer before returning.
     fn read_at(&self, offset: u64, buffer: &mut [u8]) -> Result<ReadResult, ReadError>;
 
     fn size_bytes(&self) -> u64 {
@@ -120,7 +127,7 @@ pub trait BlockSource: Send + Sync {
 #[derive(Debug)]
 pub struct FileBlockSource {
     device: PhysicalDevice,
-    file: Mutex<File>,
+    file: File,
     path: PathBuf,
 }
 
@@ -199,7 +206,7 @@ impl FileBlockSource {
                 bus_type: BusType::Virtual,
                 trim_supported: None,
             },
-            file: Mutex::new(file),
+            file,
             path,
         })
     }
@@ -227,7 +234,7 @@ impl FileBlockSource {
                 bus_type: BusType::Virtual,
                 trim_supported: None,
             },
-            file: Mutex::new(file),
+            file,
             path,
         })
     }
@@ -243,8 +250,7 @@ impl FileBlockSource {
     ) -> Result<T, ReadError> {
         use std::os::fd::AsRawFd;
 
-        let file = self.file.lock().map_err(|_| ReadError::LockPoisoned)?;
-        Ok(operation(file.as_raw_fd()))
+        Ok(operation(self.file.as_raw_fd()))
     }
 
     #[cfg(windows)]
@@ -254,8 +260,7 @@ impl FileBlockSource {
     ) -> Result<T, ReadError> {
         use std::os::windows::io::AsRawHandle;
 
-        let file = self.file.lock().map_err(|_| ReadError::LockPoisoned)?;
-        Ok(operation(file.as_raw_handle()))
+        Ok(operation(self.file.as_raw_handle()))
     }
 
     fn validate_range(&self, offset: u64, length: usize) -> Result<(), ReadError> {
@@ -288,12 +293,60 @@ impl BlockSource for FileBlockSource {
     fn read_at(&self, offset: u64, buffer: &mut [u8]) -> Result<ReadResult, ReadError> {
         self.validate_range(offset, buffer.len())?;
 
-        let mut file = self.file.lock().map_err(|_| ReadError::LockPoisoned)?;
-        file.seek(SeekFrom::Start(offset))?;
-        let bytes_read = file.read(buffer)?;
+        let bytes_read = read_fully_at(&self.file, offset, buffer)?;
 
         Ok(ReadResult { offset, bytes_read })
     }
+}
+
+fn positional_read(file: &File, buffer: &mut [u8], offset: u64) -> std::io::Result<usize> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::FileExt;
+        file.read_at(buffer, offset)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::FileExt;
+        file.seek_read(buffer, offset)
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let mut file = file.try_clone()?;
+        file.seek(SeekFrom::Start(offset))?;
+        file.read(buffer)
+    }
+}
+
+fn read_fully_at(file: &File, offset: u64, buffer: &mut [u8]) -> std::io::Result<usize> {
+    read_fully(buffer, offset, |current_offset, chunk| {
+        positional_read(file, chunk, current_offset)
+    })
+}
+
+fn read_fully(
+    buffer: &mut [u8],
+    offset: u64,
+    mut read_at: impl FnMut(u64, &mut [u8]) -> std::io::Result<usize>,
+) -> std::io::Result<usize> {
+    let mut bytes_read = 0usize;
+    while bytes_read < buffer.len() {
+        let current_offset = offset
+            .checked_add(bytes_read as u64)
+            .ok_or_else(|| std::io::Error::from(std::io::ErrorKind::InvalidInput))?;
+        let read = read_at(current_offset, &mut buffer[bytes_read..])?;
+        if read == 0 {
+            break;
+        }
+        if read > buffer.len() - bytes_read {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "positional read returned more bytes than requested",
+            ));
+        }
+        bytes_read += read;
+    }
+    Ok(bytes_read)
 }
 
 #[cfg(test)]
@@ -324,6 +377,25 @@ mod tests {
         assert_eq!(&buffer, b"4567");
 
         std::fs::remove_file(path).unwrap();
+    }
+
+    #[test]
+    fn reads_through_short_reads_until_buffer_is_full() {
+        let data = b"0123456789abcdef";
+        let mut buffer = [0_u8; 10];
+        let mut calls = 0usize;
+        let bytes_read = read_fully(&mut buffer, 3, |offset, target| {
+            calls += 1;
+            let start = offset as usize;
+            let count = target.len().min(2);
+            target[..count].copy_from_slice(&data[start..start + count]);
+            Ok(count)
+        })
+        .unwrap();
+
+        assert_eq!(bytes_read, buffer.len());
+        assert_eq!(&buffer, b"3456789abc");
+        assert_eq!(calls, 5);
     }
 
     #[test]
