@@ -34,10 +34,10 @@
     </div>
 
     <div class="sidebar-foot">
-      <div class="adv-row" id="advRow">
+    <button class="adv-row" id="advRow" type="button" aria-controls="advancedPanel" aria-expanded="false">
         <span id="advancedModeLabel">⚙️ Advanced mode</span>
         <div class="tog" id="togSwitch"></div>
-      </div>
+    </button>
       <div class="sidebar-note" id="sidebarNote">Read-only disk access. Source data is never modified.</div>
     </div>
   </aside>
@@ -187,6 +187,8 @@
             </div>
           </div>
 
+          <details class="workflow-details" id="imageWorkflowDetails">
+            <summary id="imageWorkflowDisclosure">🧊 Image-first workflow</summary>
           <div class="image-panel" id="imageWorkflowPanel">
             <div class="image-head">
               <div class="image-title" id="imageWorkflowTitle">🧊 v1.9 Image first + ddrescue map</div>
@@ -201,7 +203,10 @@
               <button class="risk-chip" id="refreshImageWorkflow" type="button">Regenerate</button>
             </div>
           </div>
+          </details>
 
+          <details class="workflow-details" id="sessionWorkflowDetails">
+            <summary id="sessionWorkflowDisclosure">🗂️ Case / session tools</summary>
           <div class="image-panel" id="sessionWorkflowPanel">
             <div class="image-head">
               <div class="image-title" id="sessionWorkflowTitle">🗂️ v2.7 Recovery Case Session + Customer Package</div>
@@ -229,7 +234,10 @@
               <button class="risk-chip" id="refreshSessionWorkflow" type="button">Regenerate</button>
             </div>
           </div>
+          </details>
 
+          <details class="workflow-details" id="diagDetails">
+            <summary id="diagDisclosure">🧰 Runtime diagnostics</summary>
           <div class="diag-panel" id="diagPanel">
             <div class="diag-head">
               <div class="diag-title" id="diagTitle">🧰 Runtime Environment Check</div>
@@ -240,6 +248,7 @@
               <button class="risk-chip" id="refreshDiagnostics" type="button">Check again</button>
             </div>
           </div>
+          </details>
 
           <button class="btn primary s1-scan scan-action is-hidden" id="runRealScan" type="button">▶ Start Safe Scan</button>
           <button class="btn ghost s1-scan" id="previewSampleBtn" type="button">👀 Preview Sample</button>
@@ -279,8 +288,8 @@
               <strong id="foundFilesTitle">Found files</strong>
               <div class="pane-hd-r">
                 <span class="pill" id="entryCount">0 個項目</span>
-                <button class="vtbtn act" id="btnList" title="清單">☰</button>
-                <button class="vtbtn" id="btnGrid" title="格子">⊞</button>
+              <button class="vtbtn act" id="btnList" type="button" title="清單" aria-pressed="true">☰</button>
+              <button class="vtbtn" id="btnGrid" type="button" title="格子" aria-pressed="false">⊞</button>
               </div>
             </div>
             <div class="filter-bar">
@@ -299,6 +308,7 @@
               <span class="pill" id="selectedCount">Selected 0</span>
             </div>
             <div class="filter-toolbar">
+              <label class="sr-only" for="pathFilter" id="pathFilterLabel">Filter by path</label>
               <input id="pathFilter" class="path-filter" type="text" placeholder="🔍 Filter by path" autocomplete="off" spellcheck="false">
               <button class="fb soft flex-shrink" id="clearPathFilter" type="button">✕ Clear</button>
             </div>
@@ -323,7 +333,7 @@
   </main>
 
   <!-- ── Right sidebar (進階模式才顯示) ── -->
-  <aside class="right">
+  <aside class="right" id="advancedPanel">
     <div class="rs-title" id="advancedSettingsTitle">Advanced Settings</div>
 
     <div class="ig ao">

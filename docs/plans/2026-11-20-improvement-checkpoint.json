@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 45,
-  "updated_at": "2026-11-21T01:39:46+08:00",
+  "revision": 46,
+  "updated_at": "2026-11-21T09:08:27+08:00",
   "updated_by": "codex",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -519,6 +519,28 @@
       ],
       "notes": [
         "未對 polik18.github.io 主站或其他 repository 做外部發布／轉址 mutation；若要新增 polik-recover/ → polik-recovery/，需另取得 owner 授權。"
+      ]
+    },
+    {
+      "id": "UX1",
+      "title": "桌面原型 UI 狀態契約與模式切換正確性",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/UX1-ui-state-contract",
+      "started_at": "2026-11-21T09:08:27+08:00",
+      "finished_at": "2026-11-21T09:18:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "node --check product/apps/desktop-prototype/app.js：通過；git diff --check：通過。",
+        "python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py：全部通過。",
+        "本機 Camoufox 只讀驗收：先載入 NTFS 範例顯示 4 items／16 records／3 files／1 deleted／50.0 KB；切換 Deep Scan 後結果變為 0 items、0 records、0 files、0 B，來源與模式同步更新，不再殘留 NTFS 結果。",
+        "本機 Camoufox 只讀驗收：進階模式、列表／格狀檢視、篩選按鈕與路徑欄位具有 ARIA 狀態／標籤；三個專家區塊預設收合；切換 zh-Hant 後統計與 disclosure 正確翻譯，且不覆寫 reportInput。"
+      ],
+      "notes": [
+        "研究實測：先載入 NTFS 範例再切換 Deep Scan 時，標題與來源更新但結果與統計仍保留 NTFS 資料；根因是導覽事件只呼叫 setModeConfig，未清除 state 或重新解析。"
       ]
     }
   ]

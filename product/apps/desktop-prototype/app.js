@@ -15,11 +15,11 @@ const I18N = {
     sessionWorkflowTitle:'🗂️ v2.7 Recovery Case Session + Customer Package', sessionWorkflowBadge:'Recommended', sessionWorkflowSummary:'Create one case folder per recovery and keep image, map, scan, recovery, quality, logs, dashboard, customer summary, and engineer handoff together.', activeSessionStatus:'No Session is active. Use Create Session to point recovery output to a case folder automatically.', sessionWorkflowCommand:'Choose a source to generate session creation, indexing, and check commands.',
     sessionButtons:['Create Session','Open Session','Use Session Output','Update Index','Check Session','Open Index','Import Reports / Artifacts','Generate Handoff Report','Open Customer Report','Open Engineer Report','Create Customer ZIP','Open Delivery Folder','Copy Session Command'],
     diagTitle:'🧰 Runtime Environment Check', notChecked:'Not checked', checkAgain:'Check again', startSafeScan:'▶ Start Safe Scan', previewSample:'👀 Preview Sample', emptyHint:'🛡️ Read-only mode: this app will never write to or modify your source disk',
-    qualityNote:'✅ By default, only complete or medium-confidence items are auto-selected. Low-confidence fragments are not auto-selected.', foundFiles:'Found files', pathFilterPlaceholder:'🔍 Filter by path (e.g. /Users/me/Desktop)', clearFilter:'✕ Clear', quickRecover:'⚡ Recover now', quickRecoverConfirm:'Recover this file now?\n\nFile: {name}\nSize: {size}\nOutput: {path}\n\nClick OK to start.', quickRecoverUnknownSize:'Unknown', filters:['All','🖼 Images','📄 Documents','🎬 Videos','🎵 Audio','🗑️ Deleted','✅ Complete','🟡 Repairable','🧩 Partial','⚠️ Fragments'], selectUsable:'Select usable', clear:'Clear', selectedPrefix:'Selected', itemCount:'items', fileCount:'files', selectedApprox:'Selected {count} files - about {size}', bucketCounts:'Complete {complete} - Repairable {possible} - Partial {partial} - Fragments {fragments} | complete files go to recovered/, others are quarantined to suspect/', emptySelectionSub:'Partial files and fragments are not selected by default. Select them manually only when needed.', selectionMain:'Select files to recover first', selectionSub:'Use Shift for range selection. The destination is shown before restore.', details:'File details', notSelected:'Not selected',
+    qualityNote:'✅ By default, only complete or medium-confidence items are auto-selected. Low-confidence fragments are not auto-selected.', foundFiles:'Found files', pathFilterLabel:'Filter results by path', pathFilterPlaceholder:'🔍 Filter by path (e.g. /Users/me/Desktop)', clearFilter:'✕ Clear', quickRecover:'⚡ Recover now', quickRecoverConfirm:'Recover this file now?\n\nFile: {name}\nSize: {size}\nOutput: {path}\n\nClick OK to start.', quickRecoverUnknownSize:'Unknown', filters:['All','🖼 Images','📄 Documents','🎬 Videos','🎵 Audio','🗑️ Deleted','✅ Complete','🟡 Repairable','🧩 Partial','⚠️ Fragments'], selectUsable:'Select usable', clear:'Clear', selectedPrefix:'Selected', itemCount:'items', fileCount:'files', selectedApprox:'Selected {count} files - about {size}', bucketCounts:'Complete {complete} - Repairable {possible} - Partial {partial} - Fragments {fragments} | complete files go to recovered/, others are quarantined to suspect/', emptySelectionSub:'Partial files and fragments are not selected by default. Select them manually only when needed.', selectionMain:'Select files to recover first', selectionSub:'Use Shift for range selection. The destination is shown before restore.', details:'File details', notSelected:'Not selected',
     status:{deleted:'🗑️ Deleted', normal:'Normal'}, qualityLabels:{high:'Complete', medium:'Suspect', low:'Fragment'}, bucketTitles:{complete:'Complete', possible:'Repairable', partial:'Partial recovery', fragments:'Low-confidence fragments'}, bucketHints:{complete:'Selected by default, output to recovered/', possible:'Selected by default, may be quarantined on output', partial:'Manual selection, output to suspect/partial', fragments:'Manual selection, usually for expert review only'}, qualitySummary:'Recovery quality: complete {complete}, repairable {possible}, partial {partial}, low-confidence fragments {fragments}. Low-confidence items are not auto-selected.', qualityEmpty:'No scan result loaded yet. Results are separated into recovered/ and suspect/ after scanning.',
     categoryLabels:{image:'images', doc:'documents', video:'videos', audio:'audio'}, noFiles:'No files found', noFilteredFiles:'No recoverable {type} files were found on this disk.', listHead:['File name','Status','Assessment','Route','Size'], selectAria:'Select {name}', filePath:'File path', detailsPrompt:'Click a file on the left to view details', nodeType:'Node type', allocationStatus:'Allocation status', fileSize:'File size', recoveryConfidence:'Recovery confidence', confidence:'confidence', routeStrategy:'Route strategy', qualityTag:'Quality tag', readMode:'Read mode', lostBytes:'lost {bytes} bytes', outputPreview:'Will restore to', folderNotRestorable:'Folders cannot be restored directly. Select files inside the folder.',
-    advancedSettings:'Advanced Settings', advancedNotice:'🛡️ Save recovered files to another disk. Never save them back to the damaged source disk.', generatedCommand:'Generated CLI command', recoveryReportTitle:'Recovery Complete Report', recoveryReportNote:'Complete files are placed in recovered/. Suspect, partial, and low-confidence results are quarantined in suspect/.', openHtmlReport:'🌐 Open HTML Report', copySummary:'📋 Copy Summary', collapseReport:'Collapse Report',
-    copied:'✓ Copied', commandCopied:'Command copied.', sampleLoaded:'Sample result loaded. Use the desktop app to run real recovery.', metrics:{default:['Files found','Detected files','Recoverable deleted files','Recoverable data size','CLI report output (JSON / Text)','VFS scan result (JSON / Text)'], carver:['Signatures detected','Carved successfully','Confidence','Scanned data','Deep scan log','Carved result list'], apfs:['Superblock status','Object manager OID','Volumes','Block size','APFS superblock metadata','Subvolume structure list']},
+    advancedSettings:'Advanced Settings', advancedNotice:'🛡️ Save recovered files to another disk. Never save them back to the damaged source disk.', generatedCommand:'Generated CLI command', imageWorkflowDisclosure:'🧊 Image-first workflow', sessionWorkflowDisclosure:'🗂️ Case / session tools', diagDisclosure:'🧰 Runtime diagnostics', recoveryReportTitle:'Recovery Complete Report', recoveryReportNote:'Complete files are placed in recovered/. Suspect, partial, and low-confidence results are quarantined in suspect/.', openHtmlReport:'🌐 Open HTML Report', copySummary:'📋 Copy Summary', collapseReport:'Collapse Report',
+    copied:'✓ Copied', commandCopied:'Command copied.', sampleLoaded:'Sample result loaded. Use the desktop app to run real recovery.', metrics:{default:['Records scanned','Files in result','Deleted in result','Visible data size','CLI report output (JSON / Text)','VFS scan result (JSON / Text)'], carver:['Signatures detected','Carved successfully','Confidence','Scanned data','Deep scan log','Carved result list'], apfs:['Superblock status','Object manager OID','Volumes','Block size','APFS superblock metadata','Subvolume structure list']},
     modes:{
       ntfs:{nav:'💾 Disk scan and recovery', title:'Disk Scan and Recovery', badge:'Windows / NTFS', emptyTitle:'Scan a disk and recover lost files', desc:'For Windows disks, SSDs, or NTFS partitions. After scanning, select files from the file tree to restore.', advice:'Best for Windows disks or NTFS partitions. Start with a normal scan, then use Deep Scan only if needed.'},
       exfat:{nav:'📁 exFAT removable recovery', title:'exFAT Removable Recovery', badge:'Removable / exFAT', emptyTitle:'Scan an exFAT USB drive', desc:'For larger USB drives, external disks, and memory cards using exFAT. Save recovered files to the computer, not back to the same drive.', advice:'Best for exFAT USB drives, memory cards, and external storage. Use Deep Scan if the file system is severely damaged.'},
@@ -43,10 +43,10 @@ I18N['zh-Hant'] = {
   sessionWorkflowTitle:'🗂️ v2.7 救援案件 Session + 客戶交付包', sessionWorkflowBadge:'建議建立', sessionWorkflowSummary:'每次救援建立一個案件資料夾，把 image、map、scan、recovery、quality、log、Dashboard、客戶版摘要與工程交接報告放在一起。', activeSessionStatus:'尚未啟用 Session。可先按「直接建立 Session」，App 會自動把還原輸出指向案件資料夾。', sessionWorkflowCommand:'選擇來源後會產生 session 建立、索引與檢查指令。',
   sessionButtons:['直接建立 Session','開啟既有 Session','使用 Session 輸出','更新索引','檢查 Session','開啟索引','匯入報告 / Artifacts','產生交接報告','開啟客戶版','開啟工程版','建立客戶交付 ZIP','開啟交付資料夾','複製 Session 指令'],
   diagTitle:'🧰 實機環境檢查', emptyHint:'🛡️ 唯讀模式：本程式絕對不會寫入或修改您的來源磁碟', qualityNote:'✅ 預設只會自動勾選完整或中信心項目；低信心碎片不會自動勾選，避免把垃圾檔混進成功檔。', foundFiles:'找到的檔案', pathFilterPlaceholder:'🔍 篩選路徑（例如 /Users/me/Desktop）', clearFilter:'✕ 清除', quickRecover:'⚡ 立刻救回', quickRecoverConfirm:'立刻救回這個檔案？\n\n檔案：{name}\n大小：{size}\n輸出：{path}\n\n按「確認」開始。', quickRecoverUnknownSize:'未知', filters:['全部','🖼 圖片','📄 文件','🎬 影片','🎵 音訊','🗑️ 已刪除','✅ 完整','🟡 可疑可修','🧩 部分救援','⚠️ 碎片'], itemCount:'個項目', fileCount:'個檔案', selectedApprox:'已選 {count} 個檔案・約 {size}', bucketCounts:'完整 {complete}・可疑 {possible}・部分 {partial}・碎片 {fragments}｜完整檔進 recovered/，其他隔離到 suspect/', emptySelectionSub:'預設不勾選 partial / fragments；真的需要殘檔時再手動勾選。', selectionMain:'先勾選要救回來的檔案', selectionSub:'可用 Shift 連續選取；還原前會顯示儲存位置。',
-  status:{deleted:'🗑️ 已刪除', normal:'正常'}, qualityLabels:{high:'完整', medium:'可疑', low:'碎片'}, bucketTitles:{complete:'完整可用', possible:'可疑可修', partial:'部分救援', fragments:'低信心碎片'}, bucketHints:{complete:'預設勾選，輸出到 recovered/', possible:'預設勾選，但輸出時可能隔離', partial:'需手動勾選，輸出到 suspect/partial', fragments:'需手動勾選，通常只供專家檢查'}, qualitySummary:'救援品質分流：完整 {complete}、可疑可修 {possible}、部分救援 {partial}、低信心碎片 {fragments}。低信心項目不會自動勾選，避免垃圾檔混進成功結果。', qualityEmpty:'尚未載入掃描結果。開始掃描後會依品質分成 recovered/ 與 suspect/。',
+  status:{deleted:'🗑️ 已刪除', normal:'正常'}, qualityLabels:{high:'完整', medium:'可疑', low:'碎片'}, bucketTitles:{complete:'完整可用', possible:'可疑可修', partial:'部分救援', fragments:'低信心碎片'}, bucketHints:{complete:'預設勾選，輸出到 recovered/', possible:'預設勾選，但輸出時可能隔離', partial:'需手動勾選，輸出到 suspect/partial', fragments:'需手動勾選，通常只供專家檢查'}, qualitySummary:'救援品質分流：完整 {complete}、可疑可修 {possible}、部分救援 {partial}、低信心碎片 {fragments}。低信心項目不會自動勾選，避免垃圾檔混進成功結果。', qualityEmpty:'尚未載入掃描結果。開始掃描後會依品質分成 recovered/ 與 suspect/。', pathFilterLabel:'依路徑篩選結果',
   categoryLabels:{image:'圖片', doc:'文件', video:'影片', audio:'音訊'}, noFiles:'未找到任何檔案', noFilteredFiles:'此磁碟未找到「{type}」類型的可救援檔案', listHead:['檔名','狀態','判定','分流','大小'], selectAria:'選取 {name}', filePath:'檔案路徑', detailsPrompt:'請點擊左側的檔案以查看詳細資訊', nodeType:'節點類型', allocationStatus:'分配狀態', fileSize:'檔案大小', recoveryConfidence:'救援信心', confidence:'信心值', routeStrategy:'分流策略', qualityTag:'品質標記', readMode:'讀取模式', lostBytes:'遺失 {bytes} bytes', outputPreview:'預計還原到', folderNotRestorable:'資料夾本身不可直接還原，請勾選裡面的檔案',
-  advancedSettings:'進階設定', advancedNotice:'🛡️ 請將還原的檔案存到其他磁碟，切勿存回損毀的來源磁碟！', generatedCommand:'生成的 CLI 執行指令', recoveryReportTitle:'還原完成報告', recoveryReportNote:'完整成功檔會在 recovered/，可疑、部分或低信心結果會隔離到 suspect/。', openHtmlReport:'🌐 開啟 HTML 報告', copySummary:'📋 複製摘要', collapseReport:'收起報告', copied:'✓ 已複製', commandCopied:'指令已複製。', sampleLoaded:'已載入範例結果。正式救援請用桌面 App 開始掃描。',
-  metrics:{default:['掃描到的檔案數量','偵測到的檔案','可救援的已刪除檔案','可救援的資料大小','CLI 報告輸出 (JSON / Text)','VFS 掃描結果 (JSON / Text)'], carver:['偵測到的特徵碼','成功彫刻數','信心值','掃描資料量','深度掃描日誌','彫刻結果清單'], apfs:['超級區塊狀態','物件管理 OID','卷宗個數','Block 大小','APFS 超區元數據','子卷結構列表']},
+  advancedSettings:'進階設定', advancedNotice:'🛡️ 請將還原的檔案存到其他磁碟，切勿存回損毀的來源磁碟！', generatedCommand:'生成的 CLI 執行指令', imageWorkflowDisclosure:'🧊 映像檔優先流程', sessionWorkflowDisclosure:'🗂️ 案件／Session 工具', diagDisclosure:'🧰 實機環境檢查', recoveryReportTitle:'還原完成報告', recoveryReportNote:'完整成功檔會在 recovered/，可疑、部分或低信心結果會隔離到 suspect/。', openHtmlReport:'🌐 開啟 HTML 報告', copySummary:'📋 複製摘要', collapseReport:'收起報告', copied:'✓ 已複製', commandCopied:'指令已複製。', sampleLoaded:'已載入範例結果。正式救援請用桌面 App 開始掃描。',
+  metrics:{default:['掃描的記錄數','結果中的檔案','結果中的已刪除檔案','結果資料大小','CLI 報告輸出 (JSON / Text)','VFS 掃描結果 (JSON / Text)'], carver:['偵測到的特徵碼','成功彫刻數','信心值','掃描資料量','深度掃描日誌','彫刻結果清單'], apfs:['超級區塊狀態','物件管理 OID','卷宗個數','Block 大小','APFS 超區元數據','子卷結構列表']},
   modes:{
     ntfs:{nav:'💾 硬碟掃描與救援', title:'硬碟掃描與救援', badge:'Windows / NTFS', emptyTitle:'掃描硬碟，找回遺失檔案', desc:'適合一般 Windows 硬碟、SSD 或 NTFS 分割區。掃描後會列出檔案樹，讓你勾選要還原的項目。', advice:'適合 Windows 硬碟或 NTFS 分割區，建議先跑一般掃描；找不到再改用深度碎塊掃描。'},
     exfat:{nav:'📁 exFAT 隨身碟救援', title:'隨身碟掃描與救援', badge:'隨身碟 / exFAT', emptyTitle:'掃描 exFAT 隨身碟', desc:'適合容量較大的 USB 隨身碟、外接硬碟、記憶卡等 exFAT 裝置。請把救回來的檔案存到電腦，不要存回同一支隨身碟。', advice:'適合 exFAT 隨身碟、記憶卡與外接儲存裝置。若檔案系統損毀嚴重，可改用深度碎塊掃描。'},
@@ -236,6 +236,9 @@ function applyI18n(){
   setText('sampleLabel','sampleLabel');
   setText('loadSampleData','loadSample');
   setText('advancedModeLabel','advancedMode');
+  setText('imageWorkflowDisclosure','imageWorkflowDisclosure');
+  setText('sessionWorkflowDisclosure','sessionWorkflowDisclosure');
+  setText('diagDisclosure','diagDisclosure');
   setText('sidebarNote','sidebarNote');
   setText('modeKicker','workbench');
   setText('runtimeBadge','runtimePreview');
@@ -321,6 +324,8 @@ function applyI18n(){
   const lang=$('languageSelect');
   if(lang) lang.value=currentLocale;
   setButtonList(['btnModeNtfs','btnModeExfat','btnModeFat32','btnModeApfs','btnModeCarver'], ['ntfs','exfat','fat32','apfs','carver'].map(m=>tr(`modes.${m}.nav`)));
+  $$('.fb[data-f]').forEach(btn=>btn.setAttribute('aria-pressed', String(btn.classList.contains('act'))));
+  setText('pathFilterLabel','pathFilterLabel','Filter by path');
   applyMetricLabels(activeMode==='carver'?'carver':activeMode==='apfs'?'apfs':'default');
 }
 function setLocale(locale){
@@ -328,7 +333,7 @@ function setLocale(locale){
   currentLocale=locale;
   localStorage.setItem('polik_locale', currentLocale);
   applyI18n();
-  setModeConfig(activeMode);
+  setModeConfig(activeMode,{loadSample:false});
   render();
 }
 
@@ -1159,6 +1164,8 @@ function setStep(n){
 function setAdv(on){
   document.body.classList.toggle('adv', on);
   $('togSwitch').classList.toggle('on', on);
+  $('advRow')?.setAttribute('aria-expanded', String(on));
+  $('advRow')?.setAttribute('aria-pressed', String(on));
 }
 $('advRow').addEventListener('click', ()=>setAdv(!document.body.classList.contains('adv')));
 
@@ -1396,7 +1403,7 @@ function tauriAPI(ns){
 }
 
 // ── Mode config (labels + inputs, no parse) ──
-function setModeConfig(mode){
+function setModeConfig(mode, {loadSample=true}={}){
   activeMode = mode;
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   const ids={ntfs:'btnModeNtfs',exfat:'btnModeExfat',fat32:'btnModeFat32',apfs:'btnModeApfs',carver:'btnModeCarver'};
@@ -1412,19 +1419,48 @@ function setModeConfig(mode){
   $('modeAdvice').textContent=localized.advice || meta.advice;
   $('modeAdviceIcon').textContent=meta.icon;
   if($('ntfsScanProfileGroup')) $('ntfsScanProfileGroup').style.display = mode==='ntfs' ? '' : 'none';
-  if(isSampleOutput($('outputPath').value)) {
+  if(loadSample && isSampleOutput($('outputPath').value)) {
     $('outputPath').value=defaultRecoveryDir || cfg.output;
   }
   applyDiskFilter();
-  if(!$('diskSel')?.value) $('sourcePath').value=cfg.source;
-  $('reportInput').value=cfg.report;
-  $('vfsInput').value=cfg.vfs;
-  $('diskBar').innerHTML=cfg.diskBar;
+  if(loadSample){
+    if(!$('diskSel')?.value) $('sourcePath').value=cfg.source;
+    $('reportInput').value=cfg.report;
+    $('vfsInput').value=cfg.vfs;
+    $('diskBar').innerHTML=cfg.diskBar;
+  }
   applyMetricLabels(mode==='carver'?'carver':mode==='apfs'?'apfs':'default');
   renderCommand();
   renderRiskPanel();
   refreshImageWorkflowPlan();
   refreshSessionWorkflowPlan();
+}
+
+function resetResultsForModeChange(){
+  scanPageTicket++;
+  thumbnailQueue.length=0;
+  thumbCache.clear();
+  if(thumbObserver){ thumbObserver.disconnect(); thumbObserver=null; }
+  latestStructuredEntries=null;
+  state.report={};
+  state.entries=[];
+  state.selected=null;
+  state.selectedIds.clear();
+  state.lastSelectedId=null;
+  state.lastRecoveryReport=null;
+  activeFilter='all';
+  $$('.fb[data-f]').forEach(btn=>btn.classList.toggle('act', btn.dataset.f==='all'));
+}
+
+function switchMode(mode){
+  if(operationInProgress){
+    setAS('目前有作業進行中，請先中止或等待完成後再切換掃描類型。','error');
+    return;
+  }
+  if(mode!==activeMode) resetResultsForModeChange();
+  setModeConfig(mode);
+  setStep(1);
+  render();
 }
 
 // setMode = setModeConfig + parse (used by load-samples)
@@ -1558,10 +1594,16 @@ function render(){
     $('volLbl').textContent='APFS Container';
     $('mftLbl').textContent=state.report.omap_oid?`Object Map OID ${state.report.omap_oid}`:'';
   } else {
+    const fileEntries=state.entries.filter(e=>e.kind==='File');
+    const deletedEntries=fileEntries.filter(e=>String(e.status).toLowerCase()==='deleted');
+    const visibleBytes=fileEntries.reduce((total,e)=>{
+      const size=Number(e.size);
+      return Number.isFinite(size) && size>0 ? total+size : total;
+    },0);
     $('mRec').textContent=state.report.records_scanned||'0';
-    $('mFil').textContent=state.report.files||'0';
-    $('mDel').textContent=state.report.deleted||'0';
-    $('mExt').textContent=state.report.total_size_bytes?fmtBytes(+state.report.total_size_bytes):'0';
+    $('mFil').textContent=String(fileEntries.length);
+    $('mDel').textContent=String(deletedEntries.length);
+    $('mExt').textContent=visibleBytes?fmtBytes(visibleBytes):'0 B';
     $('volLbl').textContent=state.report.total_size_bytes?`Disk size: ${fmtBytes(+state.report.total_size_bytes)}`:'Disk not loaded';
     $('mftLbl').textContent=state.report.mft_offset?`Address offset ${state.report.mft_offset}`:'';
   }
@@ -1594,7 +1636,7 @@ function renderQualitySummary(){
     ['fragments','⚠️',stats.fragments,stats.bytes.fragments,selected.fragments],
   ];
   $('qualitySummary').innerHTML = cards.map(([bucket,icon,count,bytes,sel])=>`
-    <button type="button" class="qcard ${bucket}" data-qf="${bucket}" title="${bucketTitle(bucket)}">
+    <button type="button" class="qcard ${bucket}" data-qf="${bucket}" title="${bucketTitle(bucket)}" aria-pressed="${activeFilter===bucket}">
       <span>${icon} ${bucketTitle(bucket)}</span>
       <strong>${count}</strong>
       <small>${fmtBytes(bytes)} | ${tr('selectedPrefix')} ${sel}<br>${bucketHint(bucket)}</small>
@@ -1606,6 +1648,7 @@ function renderQualitySummary(){
   $$('.qcard').forEach(card=>card.addEventListener('click',()=>{
     activeFilter=card.dataset.qf;
     $$('.fb').forEach(b=>b.classList.toggle('act', b.dataset.f===activeFilter));
+    $$('.fb[data-f]').forEach(b=>b.setAttribute('aria-pressed', String(b.dataset.f===activeFilter)));
     render();
   }));
 }
@@ -1856,6 +1899,8 @@ $('btnList').addEventListener('click',()=>{
   $('gridWrap').classList.remove('act');
   $('btnList').classList.add('act');
   $('btnGrid').classList.remove('act');
+  $('btnList').setAttribute('aria-pressed','true');
+  $('btnGrid').setAttribute('aria-pressed','false');
 });
 $('btnGrid').addEventListener('click',()=>{
   isGrid=true;
@@ -1863,6 +1908,8 @@ $('btnGrid').addEventListener('click',()=>{
   $('gridWrap').classList.add('act');
   $('btnGrid').classList.add('act');
   $('btnList').classList.remove('act');
+  $('btnList').setAttribute('aria-pressed','false');
+  $('btnGrid').setAttribute('aria-pressed','true');
   renderVirtualGridWindow(); // 只建立可見格子並啟動縮圖懶加載
 });
 
@@ -1872,6 +1919,7 @@ document.querySelectorAll('.fb').forEach(btn=>{
     if(!btn.dataset.f) return;
     document.querySelectorAll('.fb').forEach(b=>b.classList.remove('act'));
     btn.classList.add('act');
+    document.querySelectorAll('.fb[data-f]').forEach(b=>b.setAttribute('aria-pressed', String(b===btn)));
     activeFilter=btn.dataset.f;
     render();
   });
@@ -1893,11 +1941,11 @@ $('pathFilter')?.addEventListener('input', ()=>{ render(); });
 $('clearPathFilter')?.addEventListener('click',()=>{ if($('pathFilter')) $('pathFilter').value=''; render(); });
 
 // ── Nav ──
-$('btnModeNtfs').addEventListener('click',()=>setModeConfig('ntfs'));
-$('btnModeExfat').addEventListener('click',()=>setModeConfig('exfat'));
-$('btnModeFat32').addEventListener('click',()=>setModeConfig('fat32'));
-$('btnModeApfs').addEventListener('click',()=>setModeConfig('apfs'));
-$('btnModeCarver').addEventListener('click',()=>setModeConfig('carver'));
+$('btnModeNtfs').addEventListener('click',()=>switchMode('ntfs'));
+$('btnModeExfat').addEventListener('click',()=>switchMode('exfat'));
+$('btnModeFat32').addEventListener('click',()=>switchMode('fat32'));
+$('btnModeApfs').addEventListener('click',()=>switchMode('apfs'));
+$('btnModeCarver').addEventListener('click',()=>switchMode('carver'));
 $('loadSampleData').addEventListener('click',()=>setMode(activeMode));
 $('languageSelect')?.addEventListener('change',e=>setLocale(e.target.value));
 $('previewSampleBtn').addEventListener('click',()=>{ setMode(activeMode); setAS(tr('sampleLoaded'),'ok'); });
@@ -1948,7 +1996,7 @@ $('diskSel').addEventListener('change',()=>{
   const disk=allDisks.find(d=>d.path===v);
   if(disk){
     const suggested=autoModeFromFs(disk.fs_type);
-    if(suggested!==activeMode) setModeConfig(suggested);
+    if(suggested!==activeMode) switchMode(suggested);
     if(suggested==='carver') setAS('此分割區格式（'+disk.fs_type+'）沒有專屬解析器，已切換至深度碎塊掃描。','');
   }
   loadPartitions();
