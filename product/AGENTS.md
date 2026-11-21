@@ -8,6 +8,7 @@ Before changing product code, read:
 2. `../docs/implementation-status.md`
 3. `../docs/capability-matrix.md`
 4. `../SECURITY.md`
+5. `../docs/plans/2026-11-20-usability-correctness-performance-plan.md` and its checkpoint JSON (current usability/correctness/performance work packages; claim a WP there before starting)
 
 Safety rules:
 

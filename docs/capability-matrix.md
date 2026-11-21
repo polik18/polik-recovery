@@ -3,7 +3,7 @@
 > Applies to public artifact `polik-recovery-desktop_0.1.0_aarch64.dmg`  
 > SHA-256: `897967c1a83071a16e6086ff58ca111c22091430b6c904cd479206540169af30`  
 > Updated: 2026-11-21
-> Canonical alpha checkpoint: `wp/U4-structured-errors@2d5c8ef`（usability checkpoint revision 42；P2/P3/P4/P5/U1/U2/U3/U4 已完成，S2 遠端 CI 仍待 owner 授權）
+> Canonical alpha checkpoint: `main`（usability checkpoint revision 47；全部工作包已合併；Product CI run 44850879036 於 2026-11-21 通過）
 
 ## Status definitions
 
@@ -23,7 +23,7 @@
 | Windows desktop | `planned` | canonical alpha now type-checks and passes Clippy on Windows, but no MSI/EXE, signed desktop candidate or GitHub Release exists |
 | Valid Developer ID signature | `unsupported` | strict codesign verification fails |
 | Apple notarization | `unsupported` | no stapled ticket |
-| Rebuild from public source | `partial` | canonical source is in `product/`; product pins Rust 1.85.1 and checkpoint 42 records 109 local Rust tests plus locked workspace checks, but remote CI and release artifact reproduction are not yet evidenced |
+| Rebuild from public source | `partial` | canonical source is in `product/`; product pins Rust 1.85.1 and remote Product CI (macOS-15 rust-gate + Linux cargo-deny) passed on 2026-11-21 with 111 Rust tests, but release artifact reproduction is not yet evidenced |
 | Bundled privileged helper | `unsupported` | helper is absent from 0.1.0 bundle |
 
 ## Input and safety boundary

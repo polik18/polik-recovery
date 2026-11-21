@@ -2,9 +2,9 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 46,
-  "updated_at": "2026-11-21T09:08:27+08:00",
-  "updated_by": "codex",
+  "revision": 47,
+  "updated_at": "2026-11-21T16:30:00+08:00",
+  "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
     "product/apps/desktop-prototype/index.html",
@@ -53,22 +53,25 @@
       "depends_on": [
         "S1"
       ],
-      "status": "in_progress",
+      "status": "done",
       "owner": "codex",
       "branch": "wp/S2-product-ci",
       "started_at": "2026-11-20T23:07:20+08:00",
-      "finished_at": null,
-      "next_step": "取得 owner 授權後 push 此分支，重跑 product-ci.yml 並確認 gh run 為 success、log 含 cargo test result。",
+      "finished_at": "2026-11-21T16:30:00+08:00",
+      "next_step": null,
       "blockers": [],
       "evidence": [
         "Ruby YAML parse of .github/workflows/product-ci.yml：通過。",
         "python3 scripts/check-product-security.py：通過；無 quarantine prototype／generated junk。",
         "python3 scripts/check-product-frontend.py：通過；CSP 與 inline-script hash 一致。",
         "cargo fmt --all -- --check、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast、cargo clippy --workspace --all-targets --locked -- -D warnings：全部通過。",
-        "唯讀驗證：gh run list --workflow product-ci.yml --branch wp/S2-product-ci 回傳 0 筆；git push --dry-run origin wp/S2-product-ci 顯示可建立遠端分支，但未執行 push。"
+        "唯讀驗證：gh run list --workflow product-ci.yml --branch wp/S2-product-ci 回傳 0 筆；git push --dry-run origin wp/S2-product-ci 顯示可建立遠端分支，但未執行 push。",
+        "擁有者授權合併至 main 後實跑 Product workspace run 44849737880（f5da2d0）：暴露 macos-14 runner 已停用、cargo-deny 漏列 data_recovery_partition 及 tokio RUSTSEC-2026-0386。",
+        "修正 9c20c9a（macos-15、deny skip、tokio 1.53.3）後 run 44850879036：cargo-deny success、rust-gate success；log 中 test result 合計 111 passed / 0 failed。"
       ],
       "notes": [
-        "cargo-deny action 保留 commit SHA，已移至 ubuntu-latest，避免 macOS-14 不支援 container action；未 push，故尚無遠端 gh run 證據。"
+        "cargo-deny action 保留 commit SHA，已移至 ubuntu-latest，避免 macOS-14 不支援 container action；未 push，故尚無遠端 gh run 證據。",
+        "claude-code 於合併時另修 clippy needless_return（f5da2d0）；Codex 先前紀錄的 clippy 通過與實際不符。"
       ]
     },
     {
