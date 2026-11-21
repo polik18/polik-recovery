@@ -635,9 +635,9 @@ async fn run_recovery_scan(
                 },
             )
             .ok();
-            return Ok(prepare_scan_response(r));
+            Ok(prepare_scan_response(r))
         }
-        Err(e) => return Err(friendly_runtime_error("掃描", &file_path, &e)),
+        Err(e) => Err(friendly_runtime_error("掃描", &file_path, &e)),
     }
 }
 
@@ -699,9 +699,9 @@ async fn run_recovery_extract(
     match extract_result {
         Ok(msg) => {
             app.emit("extract-progress", "100% - 還原完成").ok();
-            return Ok(msg);
+            Ok(msg)
         }
-        Err(e) => return Err(friendly_runtime_error("還原", &file_path, &e)),
+        Err(e) => Err(friendly_runtime_error("還原", &file_path, &e)),
     }
 }
 
