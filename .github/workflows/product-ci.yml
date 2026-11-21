@@ -106,6 +106,17 @@ jobs:
         # approval 2026-11-21, see product/AGENTS.md).
         run: python3 tools/macos/run_real_fs_image_gate.py --with-deleted
 
+      - name: Upload real image gate evidence on failure
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: real-fs-gate-evidence
+          retention-days: 3
+          path: |
+            product/target/real-fs-gate/report.json
+            product/fixtures/real_fs_generated/*_deleted.dmg
+            product/fixtures/real_fs_generated/*_overwritten.dmg
+
       - name: Verify release CLI fails closed
         run: |
           cargo build --release --locked -p polik-recovery-cli
