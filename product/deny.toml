@@ -42,6 +42,7 @@ skip = [
   "data_recovery_recovery_plan",
   "data_recovery_device_macos",
   "data_recovery_device_windows",
+  "data_recovery_partition",
   "polik-recovery-cli",
   "polik-recovery-desktop",
 ]
