@@ -1,5 +1,7 @@
 use data_recovery_core::{BlockSource, ReadError};
 
+pub mod spec;
+
 #[derive(Debug)]
 pub enum ApfsError {
     Read(ReadError),
@@ -402,6 +404,21 @@ pub fn read_apfs_volume_statuses<S: BlockSource + ?Sized>(
     csb: &ApfsContainerSuperblock,
     volume_offset: u64,
 ) -> Vec<ApfsVolumeStatus> {
+    if let Some(volumes) = spec::index_volumes(source, csb, volume_offset) {
+        return volumes
+            .iter()
+            .map(|index| ApfsVolumeStatus {
+                fs_oid: index.volume.fs_oid,
+                role: index.volume.role,
+                meta_crypto: u64::from(index.volume.encrypted),
+                omap_oid: index.volume.omap_oid,
+                root_tree_oid: index.volume.root_tree_oid,
+                extentref_tree_oid: index.volume.extentref_tree_oid,
+                snap_meta_tree_oid: index.volume.snap_meta_tree_oid,
+                encrypted_hint: index.volume.encrypted,
+            })
+            .collect();
+    }
     let mut statuses = Vec::new();
     for &fs_oid in &csb.fs_oids {
         let vsb_offset = volume_offset + fs_oid * csb.block_size as u64;
@@ -431,6 +448,11 @@ pub fn scan_apfs_vfs<S: BlockSource + ?Sized>(
     csb: &ApfsContainerSuperblock,
     volume_offset: u64,
 ) -> Result<Vec<ApfsEntry>, ApfsError> {
+    // Real APFS: resolve virtual OIDs through the object maps. The legacy
+    // path below only understands the simplified synthetic fixture layout.
+    if let Some(volumes) = spec::index_volumes(source, csb, volume_offset) {
+        return Ok(volumes.iter().flat_map(|v| v.entries()).collect());
+    }
     let mut entries = Vec::new();
 
     for &fs_oid in &csb.fs_oids {
@@ -565,8 +587,26 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
 
     let mut extents: Vec<(u64, u64, u64)> = Vec::new();
     let mut encrypted_hint = false;
+    let mut compressed = false;
 
-    for &fs_oid in &csb.fs_oids {
+    let spec_volumes = spec::index_volumes(source, csb, volume_offset);
+    if let Some(volumes) = &spec_volumes {
+        for index in volumes {
+            if let Some((found, is_compressed)) = index.file_extents(inode_id) {
+                extents = found;
+                compressed = is_compressed;
+                encrypted_hint = index.volume.encrypted;
+                break;
+            }
+        }
+    }
+
+    for &fs_oid in spec_volumes
+        .is_none()
+        .then_some(&csb.fs_oids)
+        .into_iter()
+        .flatten()
+    {
         let vsb_offset = volume_offset + fs_oid * csb.block_size as u64;
         let mut vsb_buf = vec![0_u8; csb.block_size as usize];
         if source.read_at(vsb_offset, &mut vsb_buf).is_err() {
@@ -676,8 +716,13 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
 
     let bytes_lost = file_size.saturating_sub(bytes_read_total.min(file_size));
     let sparse_or_missing_extents = !merged.is_empty();
-    let complete = bytes_read_total >= file_size && !sparse_or_missing_extents && !encrypted_hint;
-    let reason = if encrypted_hint {
+    let complete = bytes_read_total >= file_size
+        && !sparse_or_missing_extents
+        && !encrypted_hint
+        && !compressed;
+    let reason = if compressed {
+        "apfs_transparent_compression_not_supported; output quarantined".to_string()
+    } else if encrypted_hint {
         "volume_has_crypto_metadata; output may require unlocked/decrypted APFS context".to_string()
     } else if extents.is_empty() {
         "no_extent_records_found_for_inode".to_string()

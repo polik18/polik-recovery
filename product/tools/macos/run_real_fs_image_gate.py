@@ -28,7 +28,7 @@ FILESYSTEMS = {
     # name: (hdiutil -fs value, CLI prefix, extract id flag, required)
     "fat32": ("MS-DOS FAT32", "fat32", "--entry-id", True),
     "exfat": ("ExFAT", "exfat", "--entry-id", True),
-    "apfs": ("APFS", "apfs", "--inode", False),
+    "apfs": ("APFS", "apfs", "--inode", True),
 }
 LAYOUTS = ["NONE", "GPTSPUD"]
 PARTITION_FS_NAMES = {"fat32": "FAT32", "exfat": "exFAT", "apfs": "APFS"}
@@ -145,7 +145,7 @@ def main() -> int:
     parser.add_argument("--report", default="target/real-fs-gate/report.json")
     parser.add_argument("--filesystems", default="fat32,exfat,apfs")
     parser.add_argument("--require-all", action="store_true",
-                        help="treat known gaps (APFS) as failures")
+                        help="treat every filesystem as required, including future known gaps")
     args = parser.parse_args()
 
     if platform.system() != "Darwin" or not shutil.which("hdiutil"):

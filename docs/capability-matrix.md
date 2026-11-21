@@ -49,9 +49,9 @@
 | exFAT volume/directory parsing | `experimental` | deterministic allocated/deleted and fragmented fixture gates pass at 100%; real macOS `hdiutil`-formatted images (bare volume and GPT) pass 46/46 scan + SHA-256 extraction in `run_real_fs_image_gate.py` for allocated files; deleted files and other formatters remain unproven |
 | exFAT deleted-file recovery | `experimental` | fragmentation and partial overwrite need ground truth |
 | FAT32 parsing/recovery | `experimental` | deterministic allocated/deleted and fragmented fixture gates pass at 100%; real macOS `hdiutil`-formatted images (bare volume and GPT) pass 46/46 scan + SHA-256 extraction in `run_real_fs_image_gate.py` for allocated files; deleted files and other formatters remain unproven |
-| APFS container/volume parsing | `experimental` | deterministic synthetic complete/partial/crypto-hint gate passes at 100%; fixtures are APFS-like parser regressions, not full macOS volumes; **real `hdiutil` APFS images currently return 0 entries** (virtual OIDs are not resolved through the object map; tracked as WP R4) |
-| APFS complete OMAP/VFS traversal | `experimental` | strict real-image OMAP/VFS gate is not proven |
-| APFS extraction | `experimental` | clones, compression, snapshots and extents need separate gates |
+| APFS container/volume parsing | `experimental` | deterministic synthetic complete/partial/crypto-hint gate passes at 100%; fixtures are APFS-like parser regressions, not full macOS volumes; a reference-layout path (checkpoint selection, container/volume object maps, fixed/variable B-tree nodes, `j_key_t` records) now scans real `hdiutil`-formatted APFS images (bare and GPT) at 46/46 entries in `run_real_fs_image_gate.py` |
+| APFS complete OMAP/VFS traversal | `experimental` | OMAP-resolved traversal passes on small single-volume `hdiutil` images; multi-volume system containers, snapshots, non-contiguous checkpoint areas and large multi-level trees are unproven |
+| APFS extraction | `experimental` | uncompressed allocated files extract byte-exact (46/46 SHA-256) from real `hdiutil` images; transparently compressed files are quarantined as unsupported; clones, snapshots, deleted files and encrypted volumes need separate gates |
 | FileVault decryption | `unsupported` | no claim of decrypting locked volumes |
 
 ## File carving and output

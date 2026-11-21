@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 50,
-  "updated_at": "2026-11-21T19:30:00+08:00",
+  "revision": 51,
+  "updated_at": "2026-11-21T21:00:00+08:00",
   "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -662,18 +662,24 @@
       "depends_on": [
         "R5"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
-      "next_step": "實作 omap_lookup(oid,xid) 與 checkpoint 選擇，重寫 btree 走訪（fixed/variable kv、root footer、virtual child），修正 j_key 解析與 inode dstream/extent；以 run_real_fs_image_gate.py --require-all 驗收 apfs 46/46。",
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T19:40:00+08:00",
+      "finished_at": "2026-11-21T21:00:00+08:00",
+      "next_step": null,
       "blockers": [],
-      "evidence": [],
+      "evidence": [
+        "新增 crates/fs-apfs/src/spec.rs：最新 checkpoint NXSB、container/volume OMAP lookup、fixed/variable kv B-tree（含 root btree_info footer、virtual child OID）、j_key（60-bit id／4-bit type）、hashed drec、inode DSTREAM xfield、FILE_EXTENT；volume magic 為 APSB（舊碼檢查 APFS 亦錯）。",
+        "scan_apfs_vfs／extract_apfs_file_data_with_report／read_apfs_volume_statuses 優先走 spec 路徑，OMAP 無法解析才退回舊合成格式路徑（舊路徑有 checksum＋magic 守門）；壓縮檔標示 unsupported 並隔離。",
+        "python3 tools/macos/run_real_fs_image_gate.py：apfs × NONE/GPTSPUD 皆 46/46 找到、46/46 SHA-256 相符；APFS 已改為必過項目。",
+        "cargo test --workspace 118 passed／0 failed（新增 3 個 spec 單元測試）；clippy -D warnings、四個合成品質門禁、fixture 重現性皆通過。"
+      ],
       "notes": [
         "實測：hdiutil 產生的真實 APFS 映像 apfs-scan-vfs 回傳 0 entries。",
         "根因（讀碼確認）：(1) fs_oid／root_tree_oid 為 virtual OID，未經 container／volume OMAP B-tree 對照就當實體區塊讀；(2) 未選最新 checkpoint（應掃 checkpoint descriptor area 取最大 xid 的 NXSB）；(3) B-tree 未處理 BTNODE_FIXED_KV_SIZE（kvoff vs kvloc）、root node 尾端 btree_info（40 bytes）造成 value 區位移；FS tree index node 子節點也是 virtual OID；(4) j_key 是單一 u64（低 60 bits obj_id、高 4 bits type），型別應為 INODE=3、DIR_REC=9、FILE_EXTENT=8，現碼用 key[8..12] 與 2/3；(5) drec key 為 name_len_and_hash（低 10 bits 長度）；檔案大小在 inode xfield INO_EXT_TYPE_DSTREAM，不在固定欄位。",
-        "連帶：tools/quality/generate_apfs_fixtures.py 產生的是依錯誤格式的 APFS-like 資料，重寫後需同步改為真實結構或以 hdiutil 映像取代。"
+        "連帶：tools/quality/generate_apfs_fixtures.py 產生的是依錯誤格式的 APFS-like 資料，重寫後需同步改為真實結構或以 hdiutil 映像取代。",
+        "限制：尚未驗證多 volume 系統容器、snapshot、非連續 checkpoint area、透明壓縮（decmpfs）、加密 volume 與已刪除檔案。"
       ]
     }
   ]
