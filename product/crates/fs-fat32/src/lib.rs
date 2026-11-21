@@ -576,8 +576,21 @@ fn parse_short_name(entry: &[u8], is_deleted: bool) -> String {
     if is_deleted && !raw.is_empty() {
         raw[0] = b'_';
     }
-    let base = String::from_utf8_lossy(&raw[0..8]).trim().to_string();
-    let ext = String::from_utf8_lossy(&raw[8..11]).trim().to_string();
+    if !is_deleted && raw[0] == 0x05 {
+        // 0x05 stands in for a leading 0xE5 byte in the stored short name.
+        raw[0] = 0xE5;
+    }
+    let mut base = String::from_utf8_lossy(&raw[0..8]).trim().to_string();
+    let mut ext = String::from_utf8_lossy(&raw[8..11]).trim().to_string();
+    // Windows NT / macOS store all-lowercase 8.3 names in uppercase and set
+    // these reserved-byte flags instead of writing a long-name entry.
+    let case_flags = entry.get(12).copied().unwrap_or(0);
+    if case_flags & 0x08 != 0 {
+        base = base.to_ascii_lowercase();
+    }
+    if case_flags & 0x10 != 0 {
+        ext = ext.to_ascii_lowercase();
+    }
     let mut out = if ext.is_empty() {
         base
     } else {
@@ -592,6 +605,27 @@ fn parse_short_name(entry: &[u8], is_deleted: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn short_name_honours_nt_lowercase_flags() {
+        let mut entry = [b' '; 32];
+        entry[0..4].copy_from_slice(b"DOCS");
+        entry[11] = 0x10;
+        entry[12] = 0x08;
+        assert_eq!(parse_short_name(&entry, false), "docs");
+
+        let mut entry = [b' '; 32];
+        entry[0..6].copy_from_slice(b"README");
+        entry[8..11].copy_from_slice(b"TXT");
+        entry[12] = 0x18;
+        assert_eq!(parse_short_name(&entry, false), "readme.txt");
+
+        entry[12] = 0x10;
+        assert_eq!(parse_short_name(&entry, false), "README.txt");
+
+        entry[12] = 0;
+        assert_eq!(parse_short_name(&entry, false), "README.TXT");
+    }
 
     #[test]
     fn parses_short_directory_entry() {

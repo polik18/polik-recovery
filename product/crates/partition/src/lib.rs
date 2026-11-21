@@ -43,6 +43,9 @@ impl From<ReadError> for PartitionError {
 pub enum PartitionTableKind {
     Mbr,
     Gpt,
+    /// No partition table: the image starts directly with a filesystem
+    /// (common for USB sticks, SD cards and `hdiutil -layout NONE` images).
+    Volume,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -66,6 +69,24 @@ pub struct PartitionTable {
 
 pub fn detect<S: BlockSource + ?Sized>(source: &S) -> Result<PartitionTable, PartitionError> {
     let mbr = read_sector(source, 0)?;
+    // A FAT32 volume boot record also ends in 0x55AA, so check for a bare
+    // filesystem before interpreting sector 0 as an MBR.
+    if let Some(fs) = filesystem_signature(&mbr) {
+        return Ok(PartitionTable {
+            kind: PartitionTableKind::Volume,
+            partitions: vec![PartitionEntry {
+                index: 1,
+                offset: 0,
+                length: source.size_bytes(),
+                type_code: None,
+                type_guid: None,
+                filesystem: Some(fs.to_string()),
+                name: None,
+                bootable: false,
+            }],
+            used_backup_header: false,
+        });
+    }
     if mbr[510..512] != [0x55, 0xaa] {
         return Err(PartitionError::InvalidMbrSignature);
     }
@@ -266,19 +287,25 @@ fn probe_filesystem<S: BlockSource + ?Sized>(
     if read.bytes_read < 90 {
         return Ok(Some(mbr_type_name(type_code).to_string()).filter(|name| name != "Unknown"));
     }
-    let fs = if &boot[3..11] == b"NTFS    " {
+    let fs = filesystem_signature(&boot).or_else(|| {
+        let name = mbr_type_name(type_code);
+        (name != "Unknown").then_some(name)
+    });
+    Ok(fs.map(str::to_string))
+}
+
+fn filesystem_signature(boot: &[u8; 512]) -> Option<&'static str> {
+    if &boot[3..11] == b"NTFS    " {
         Some("NTFS")
     } else if &boot[3..11] == b"EXFAT   " {
         Some("exFAT")
-    } else if &boot[82..90] == b"FAT32   " {
+    } else if &boot[82..90] == b"FAT32   " && boot[510..512] == [0x55, 0xaa] {
         Some("FAT32")
     } else if &boot[32..36] == b"NXSB" {
         Some("APFS")
     } else {
-        let name = mbr_type_name(type_code);
-        (name != "Unknown").then_some(name)
-    };
-    Ok(fs.map(str::to_string))
+        None
+    }
 }
 
 fn mbr_type_name(type_code: u8) -> &'static str {
@@ -463,6 +490,37 @@ mod tests {
         header[16..20].fill(0);
         let header_crc = crc32(&header[..92]);
         header[16..20].copy_from_slice(&header_crc.to_le_bytes());
+    }
+
+    #[test]
+    fn detects_bare_fat32_volume_instead_of_empty_mbr() {
+        let mut image = vec![0_u8; 4096];
+        image[82..90].copy_from_slice(b"FAT32   ");
+        image[510] = 0x55;
+        image[511] = 0xaa;
+        let table = detect(&MemorySource::new(image)).unwrap();
+        assert_eq!(table.kind, PartitionTableKind::Volume);
+        assert_eq!(table.partitions.len(), 1);
+        assert_eq!(table.partitions[0].offset, 0);
+        assert_eq!(table.partitions[0].length, 4096);
+        assert_eq!(table.partitions[0].filesystem.as_deref(), Some("FAT32"));
+    }
+
+    #[test]
+    fn detects_bare_exfat_and_apfs_volumes() {
+        let mut exfat = vec![0_u8; 1024];
+        exfat[3..11].copy_from_slice(b"EXFAT   ");
+        exfat[510] = 0x55;
+        exfat[511] = 0xaa;
+        let table = detect(&MemorySource::new(exfat)).unwrap();
+        assert_eq!(table.kind, PartitionTableKind::Volume);
+        assert_eq!(table.partitions[0].filesystem.as_deref(), Some("exFAT"));
+
+        let mut apfs = vec![0_u8; 4096];
+        apfs[32..36].copy_from_slice(b"NXSB");
+        let table = detect(&MemorySource::new(apfs)).unwrap();
+        assert_eq!(table.kind, PartitionTableKind::Volume);
+        assert_eq!(table.partitions[0].filesystem.as_deref(), Some("APFS"));
     }
 
     #[test]

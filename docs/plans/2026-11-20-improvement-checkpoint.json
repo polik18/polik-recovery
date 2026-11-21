@@ -2,9 +2,9 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 49,
-  "updated_at": "2026-11-21T18:00:00+08:00",
-  "updated_by": "claude-code (merged codex UX2 onto main)",
+  "revision": 50,
+  "updated_at": "2026-11-21T19:30:00+08:00",
+  "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
     "product/apps/desktop-prototype/index.html",
@@ -570,6 +570,110 @@
       "notes": [
         "UX2 完成；仍可另案處理 src-tauri/src/lib.rs 的 4 處 clippy needless_return，未納入本次 UI 變更。",
         "main 已於 f5da2d0 修正該 4 處 clippy needless_return；claude-code 於 2026-11-21 將 UX2 cherry-pick 至 main 後 clippy -D warnings 重驗。"
+      ]
+    },
+    {
+      "id": "R1",
+      "title": "exFAT 真實映像中文檔名 panic",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T19:30:00+08:00",
+      "finished_at": "2026-11-21T19:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "根因：NameLength 是 UTF-16 code units，卻用來截斷 UTF-8 bytes；改為先截 utf16 再解碼。",
+        "新增單元測試 non_ascii_name_length_counts_utf16_units；python3 tools/macos/run_real_fs_image_gate.py：fat32/exfat × NONE/GPTSPUD 皆 46/46 找到且 46/46 SHA-256 相符"
+      ],
+      "notes": [
+        "由 hdiutil 產生的真實 exFAT 映像發現；修正前 exfat-scan-vfs 直接 panic。"
+      ]
+    },
+    {
+      "id": "R2",
+      "title": "無分割表的單一磁區映像偵測",
+      "priority": "P0",
+      "depends_on": [],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T19:30:00+08:00",
+      "finished_at": "2026-11-21T19:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "partition::detect 先檢查第 0 磁區是否為 NTFS/exFAT/FAT32/APFS，回傳 PartitionTableKind::Volume（offset 0）；新增 2 個單元測試；桌面 disks.rs 對應 \"Volume\"。",
+        "真實映像：fat32/exfat/apfs _NONE 皆偵測為 offset 0 與正確檔案系統"
+      ],
+      "notes": [
+        "修正前：FAT32 VBR 被誤認成空 MBR、exFAT 讀到 2TB 位移、APFS 報 invalid MBR signature。"
+      ]
+    },
+    {
+      "id": "R3",
+      "title": "FAT32 8.3 檔名小寫旗標（NT case flags）",
+      "priority": "P1",
+      "depends_on": [],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T19:30:00+08:00",
+      "finished_at": "2026-11-21T19:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "parse_short_name 套用 entry[12] 0x08/0x10，並處理 0x05→0xE5；新增單元測試。",
+        "python3 tools/macos/run_real_fs_image_gate.py：fat32/exfat × NONE/GPTSPUD 皆 46/46 找到且 46/46 SHA-256 相符"
+      ],
+      "notes": [
+        "修正前 macOS/Windows 建立的小寫短檔名會顯示成全大寫（/DOCS/F00.TXT）。"
+      ]
+    },
+    {
+      "id": "R5",
+      "title": "真實 macOS 格式化映像門禁（hdiutil -srcfolder，不碰 /dev）",
+      "priority": "P0",
+      "depends_on": [
+        "R1",
+        "R2",
+        "R3"
+      ],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T19:30:00+08:00",
+      "finished_at": "2026-11-21T19:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "新增 tools/macos/run_real_fs_image_gate.py 並加入 product-ci.yml macOS job；python3 tools/macos/run_real_fs_image_gate.py：fat32/exfat × NONE/GPTSPUD 皆 46/46 找到且 46/46 SHA-256 相符；APFS 標為 KNOWN-GAP（不阻擋 CI，--require-all 時阻擋）。"
+      ],
+      "notes": [
+        "影像寫在 product/fixtures/real_fs_generated/（.gitignore），只用 debug CLI 的 --fixture-storage-isolation。"
+      ]
+    },
+    {
+      "id": "R4",
+      "title": "APFS 解析器改為符合真實 APFS 格式",
+      "priority": "P0",
+      "depends_on": [
+        "R5"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": "實作 omap_lookup(oid,xid) 與 checkpoint 選擇，重寫 btree 走訪（fixed/variable kv、root footer、virtual child），修正 j_key 解析與 inode dstream/extent；以 run_real_fs_image_gate.py --require-all 驗收 apfs 46/46。",
+      "blockers": [],
+      "evidence": [],
+      "notes": [
+        "實測：hdiutil 產生的真實 APFS 映像 apfs-scan-vfs 回傳 0 entries。",
+        "根因（讀碼確認）：(1) fs_oid／root_tree_oid 為 virtual OID，未經 container／volume OMAP B-tree 對照就當實體區塊讀；(2) 未選最新 checkpoint（應掃 checkpoint descriptor area 取最大 xid 的 NXSB）；(3) B-tree 未處理 BTNODE_FIXED_KV_SIZE（kvoff vs kvloc）、root node 尾端 btree_info（40 bytes）造成 value 區位移；FS tree index node 子節點也是 virtual OID；(4) j_key 是單一 u64（低 60 bits obj_id、高 4 bits type），型別應為 INODE=3、DIR_REC=9、FILE_EXTENT=8，現碼用 key[8..12] 與 2/3；(5) drec key 為 name_len_and_hash（低 10 bits 長度）；檔案大小在 inode xfield INO_EXT_TYPE_DSTREAM，不在固定欄位。",
+        "連帶：tools/quality/generate_apfs_fixtures.py 產生的是依錯誤格式的 APFS-like 資料，重寫後需同步改為真實結構或以 hdiutil 映像取代。"
       ]
     }
   ]

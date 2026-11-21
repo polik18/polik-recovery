@@ -236,6 +236,7 @@ pub(crate) async fn detect_partitions(file_path: String) -> Result<PartitionDete
     let kind = match table.kind {
         data_recovery_partition::PartitionTableKind::Mbr => "MBR",
         data_recovery_partition::PartitionTableKind::Gpt => "GPT",
+        data_recovery_partition::PartitionTableKind::Volume => "Volume",
     };
     Ok(PartitionDetection {
         table: kind.to_string(),

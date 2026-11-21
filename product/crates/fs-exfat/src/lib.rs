@@ -441,10 +441,9 @@ pub fn parse_directory_entries(buf: &[u8], base_offset: u64) -> Vec<ExFatEntry> 
                         }
                     }
 
-                    let mut name = String::from_utf16_lossy(&utf16_chars);
-                    if name.len() > name_len {
-                        name.truncate(name_len);
-                    }
+                    // NameLength counts UTF-16 code units, not UTF-8 bytes.
+                    utf16_chars.truncate(name_len);
+                    let name = String::from_utf16_lossy(&utf16_chars);
 
                     entries.push(ExFatEntry {
                         is_deleted,
@@ -715,6 +714,29 @@ mod tests {
         assert!(parsed[0].no_fat_chain);
         assert!(!parsed[0].is_deleted);
         assert!(!parsed[0].is_directory);
+    }
+
+    #[test]
+    fn non_ascii_name_length_counts_utf16_units() {
+        // Real macOS-created exFAT volumes store CJK names; NameLength is in
+        // UTF-16 code units, so truncating by UTF-8 bytes used to panic.
+        let mut buf = vec![0_u8; 96];
+        buf[0] = 0x85;
+        buf[1] = 2;
+        buf[4..6].copy_from_slice(&0x20_u16.to_le_bytes());
+        buf[32] = 0xC0;
+        buf[33] = 0x01;
+        let name_utf16 = "中文檔名.txt".encode_utf16().collect::<Vec<_>>();
+        buf[35] = name_utf16.len() as u8;
+        buf[56..64].copy_from_slice(&650_u64.to_le_bytes());
+        buf[64] = 0xC1;
+        for (idx, &c) in name_utf16.iter().enumerate() {
+            buf[66 + idx * 2..68 + idx * 2].copy_from_slice(&c.to_le_bytes());
+        }
+
+        let parsed = parse_directory_entries(&buf, 0);
+        assert_eq!(parsed.len(), 1);
+        assert_eq!(parsed[0].name, "中文檔名.txt");
     }
 
     #[test]

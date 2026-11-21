@@ -100,6 +100,9 @@ jobs:
           python3 tools/quality/run_apfs_quality_gate.py
           git diff --exit-code -- fixtures
 
+      - name: Run real macOS-formatted filesystem image gate
+        run: python3 tools/macos/run_real_fs_image_gate.py
+
       - name: Verify release CLI fails closed
         run: |
           cargo build --release --locked -p polik-recovery-cli
