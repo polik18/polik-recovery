@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 52,
-  "updated_at": "2026-11-21T23:30:00+08:00",
+  "revision": 53,
+  "updated_at": "2026-11-22T00:10:00+08:00",
   "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -747,7 +747,7 @@
         "python3 tools/macos/run_real_fs_image_gate.py --with-deleted：fat32/exfat/apfs 刪除案例皆 46/46（含 5 個已刪除檔：5MB、中文檔名、長檔名、8.3 名稱、子資料夾）SHA-256 相符；測試後 hdiutil info 無殘留掛載。"
       ],
       "notes": [
-        "擁有者於 2026-11-21 核准本機掛載自建拋棄式映像；CI 預設不啟用 --with-deleted（是否在 CI 啟用待擁有者決定）。"
+        "擁有者於 2026-11-21 核准本機掛載自建拋棄式映像；擁有者再核准於 Product CI（ephemeral runner）啟用 --with-deleted；例外範圍已寫入 product/AGENTS.md。"
       ]
     },
     {

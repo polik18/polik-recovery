@@ -100,8 +100,11 @@ jobs:
           python3 tools/quality/run_apfs_quality_gate.py
           git diff --exit-code -- fixtures
 
-      - name: Run real macOS-formatted filesystem image gate
-        run: python3 tools/macos/run_real_fs_image_gate.py
+      - name: Run real macOS-formatted filesystem image gate (including deleted files)
+        # --with-deleted attaches only the disposable images this step just
+        # created, at private mount points, on an ephemeral runner (owner
+        # approval 2026-11-21, see product/AGENTS.md).
+        run: python3 tools/macos/run_real_fs_image_gate.py --with-deleted
 
       - name: Verify release CLI fails closed
         run: |
