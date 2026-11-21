@@ -2,9 +2,9 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 47,
-  "updated_at": "2026-11-21T16:30:00+08:00",
-  "updated_by": "claude-code",
+  "revision": 49,
+  "updated_at": "2026-11-21T18:00:00+08:00",
+  "updated_by": "claude-code (merged codex UX2 onto main)",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
     "product/apps/desktop-prototype/index.html",
@@ -544,6 +544,32 @@
       ],
       "notes": [
         "研究實測：先載入 NTFS 範例再切換 Deep Scan 時，標題與來源更新但結果與統計仍保留 NTFS 資料；根因是導覽事件只呼叫 setModeConfig，未清除 state 或重新解析。"
+      ]
+    },
+    {
+      "id": "UX2",
+      "title": "桌面原型 UI 完整可用性收尾",
+      "priority": "P1",
+      "depends_on": [
+        "UX1"
+      ],
+      "status": "done",
+      "owner": "codex",
+      "branch": "wp/UX2-ui-completion",
+      "started_at": "2026-11-21T09:35:47+08:00",
+      "finished_at": "2026-11-21T09:43:16+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "node --check product/apps/desktop-prototype/app.js、python3 scripts/check-product-frontend.py、python3 scripts/check-product-security.py、checkpoint JSON parse、git diff --check：全部通過；rg 確認 desktop prototype 與 src-tauri 無 prompt/alert/confirm 殘留。",
+        "前端完成 App dialog 的輸入欄、aria-describedby、Escape 關閉、Tab focus trap 與 focus restore；Session／Artifact 兩條原生 prompt 路徑已移除。風險檢查、模式切換、mobile mode selector 與專家 disclosure 的 runtime 文案可隨 locale 更新。",
+        "quick recover list/grid 操作移除 tabindex=-1，改為可鍵盤 focus 的 button；selection 與結果數加入 polite live region；900px 以下改用 mobile mode selector 並收起 sidebar，避免 681–900px 狹窄三欄／無導航問題。",
+        "本機 Camoufox 只讀驗收：英文風險區塊不再混入中文；Session dialog active element 為輸入欄，Tab 循環到 Cancel／Confirm，Escape 後 dialog 歸零；quick recover 為 button、無 tabindex=-1、focus 時 opacity=1；mobile selector 切換 Deep Scan 後 0 items。",
+        "workspace gate：cargo fmt、cargo check --workspace --all-targets --locked、cargo test --workspace --locked --no-fail-fast 通過（workspace tests 全部通過）；cargo clippy -D warnings 仍被未修改的 src-tauri/src/lib.rs 既有 4 處 needless_return 阻擋，已明確排除於本 UI WP。"
+      ],
+      "notes": [
+        "UX2 完成；仍可另案處理 src-tauri/src/lib.rs 的 4 處 clippy needless_return，未納入本次 UI 變更。",
+        "main 已於 f5da2d0 修正該 4 處 clippy needless_return；claude-code 於 2026-11-21 將 UX2 cherry-pick 至 main 後 clippy -D warnings 重驗。"
       ]
     }
   ]

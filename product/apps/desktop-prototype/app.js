@@ -2,7 +2,7 @@
 const I18N = {
   en: {
     appTitle:'Polik Recovery', brandLogo:'P', brandName:'Polik Recovery', brandSubtitle:'Recover important files safely',
-    navLabel:'Scan type', sampleLabel:'Sample data', loadSample:'↻ Load selected sample', advancedMode:'⚙️ Advanced mode', sidebarNote:'Read-only disk access. Source data is never modified.',
+    navLabel:'Scan type', mobileModeLabel:'Scan type', sampleLabel:'Sample data', loadSample:'↻ Load selected sample', advancedMode:'⚙️ Advanced mode', sidebarNote:'Read-only disk access. Source data is never modified.',
     workbench:'Recovery Workbench', runtimePreview:'Preview mode', desktopMode:'Desktop App Mode', previewModeMessage:'Preview mode: sample screens are available. Use the desktop app for real scans.', reanalyze:'⟳ Reanalyze', copyCommand:'⇩ Copy command', chooseImage:'📁 Choose Image', startScan:'▶ Start Scan', stop:'⏹ Stop', restoreSelected:'💾 Restore Selected Files',
     steps:{select:'Select disk', scanning:'Scanning', restore:'Select and restore'},
     scanTitle:'Scanning, please wait...', scanSub:'The system is safely reading disk contents.<br>This process will not modify your data.', scanReading:'Reading...', stopCurrent:'⏹ Stop current operation', scanTip:'Large disks can take longer to scan. Stop requests the current read flow to halt and closes the privileged helper in physical disk mode.',
@@ -10,7 +10,7 @@ const I18N = {
     recommendedFlow:'Recommended flow', diskPick:'Create an image (recommended) <span class="muted-inline">- direct physical-disk scanning is disabled</span>', detecting:'- Detecting... -', sourcePath:'Source image path', ntfsDepth:'NTFS scan depth',
     ntfsOptions:['Standard: estimate full MFT automatically (recommended)','Quick: scan first 10,000 records','Conservative: scan first 50,000 records'], ntfsHelp:'Use Standard when too few files are found. It reads $MFT size first instead of scanning only a fixed short range.',
     outputPath:'Recovery output folder <span class="danger-inline">do not choose the source disk</span>', choose:'📁 Choose', outputHelp:'Save to Desktop, an external disk, or another safe folder to avoid overwriting the disk being recovered.',
-    riskTitle:'🟢 Pre-scan risk check', riskLow:'Low risk', riskInitial:'<strong>Read-only scan.</strong> Source, format, and output location are checked before scanning to reduce overwrite risk.', riskRecommendation:'Recommendation: save recovered files to another disk',
+    riskTitle:'🟢 Pre-scan risk check', riskCheckLabel:'Pre-scan risk check', riskReady:'Ready. No obvious risk detected.', riskLow:'Low risk', riskInitial:'<strong>Read-only scan.</strong> Source, format, and output location are checked before scanning to reduce overwrite risk.', riskRecommendation:'Recommendation: save recovered files to another disk',
     imageWorkflowTitle:'🧊 v1.9 Image first + ddrescue map', imageWorkflowBadge:'Recommended flow', imageWorkflowSummary:'For physical disks, create a read-only image first, review the ddrescue map for bad or incomplete areas, then scan the .img.', imageWorkflowCommand:'Choose a source to generate imaging, map visualization, verification, and retry commands.', copyImageWorkflowCommand:'Copy image / map / retry command', regenerate:'Regenerate',
     sessionWorkflowTitle:'🗂️ v2.7 Recovery Case Session + Customer Package', sessionWorkflowBadge:'Recommended', sessionWorkflowSummary:'Create one case folder per recovery and keep image, map, scan, recovery, quality, logs, dashboard, customer summary, and engineer handoff together.', activeSessionStatus:'No Session is active. Use Create Session to point recovery output to a case folder automatically.', sessionWorkflowCommand:'Choose a source to generate session creation, indexing, and check commands.',
     sessionButtons:['Create Session','Open Session','Use Session Output','Update Index','Check Session','Open Index','Import Reports / Artifacts','Generate Handoff Report','Open Customer Report','Open Engineer Report','Create Customer ZIP','Open Delivery Folder','Copy Session Command'],
@@ -18,7 +18,7 @@ const I18N = {
     qualityNote:'✅ By default, only complete or medium-confidence items are auto-selected. Low-confidence fragments are not auto-selected.', foundFiles:'Found files', pathFilterLabel:'Filter results by path', pathFilterPlaceholder:'🔍 Filter by path (e.g. /Users/me/Desktop)', clearFilter:'✕ Clear', quickRecover:'⚡ Recover now', quickRecoverConfirm:'Recover this file now?\n\nFile: {name}\nSize: {size}\nOutput: {path}\n\nClick OK to start.', quickRecoverUnknownSize:'Unknown', filters:['All','🖼 Images','📄 Documents','🎬 Videos','🎵 Audio','🗑️ Deleted','✅ Complete','🟡 Repairable','🧩 Partial','⚠️ Fragments'], selectUsable:'Select usable', clear:'Clear', selectedPrefix:'Selected', itemCount:'items', fileCount:'files', selectedApprox:'Selected {count} files - about {size}', bucketCounts:'Complete {complete} - Repairable {possible} - Partial {partial} - Fragments {fragments} | complete files go to recovered/, others are quarantined to suspect/', emptySelectionSub:'Partial files and fragments are not selected by default. Select them manually only when needed.', selectionMain:'Select files to recover first', selectionSub:'Use Shift for range selection. The destination is shown before restore.', details:'File details', notSelected:'Not selected',
     status:{deleted:'🗑️ Deleted', normal:'Normal'}, qualityLabels:{high:'Complete', medium:'Suspect', low:'Fragment'}, bucketTitles:{complete:'Complete', possible:'Repairable', partial:'Partial recovery', fragments:'Low-confidence fragments'}, bucketHints:{complete:'Selected by default, output to recovered/', possible:'Selected by default, may be quarantined on output', partial:'Manual selection, output to suspect/partial', fragments:'Manual selection, usually for expert review only'}, qualitySummary:'Recovery quality: complete {complete}, repairable {possible}, partial {partial}, low-confidence fragments {fragments}. Low-confidence items are not auto-selected.', qualityEmpty:'No scan result loaded yet. Results are separated into recovered/ and suspect/ after scanning.',
     categoryLabels:{image:'images', doc:'documents', video:'videos', audio:'audio'}, noFiles:'No files found', noFilteredFiles:'No recoverable {type} files were found on this disk.', listHead:['File name','Status','Assessment','Route','Size'], selectAria:'Select {name}', filePath:'File path', detailsPrompt:'Click a file on the left to view details', nodeType:'Node type', allocationStatus:'Allocation status', fileSize:'File size', recoveryConfidence:'Recovery confidence', confidence:'confidence', routeStrategy:'Route strategy', qualityTag:'Quality tag', readMode:'Read mode', lostBytes:'lost {bytes} bytes', outputPreview:'Will restore to', folderNotRestorable:'Folders cannot be restored directly. Select files inside the folder.',
-    advancedSettings:'Advanced Settings', advancedNotice:'🛡️ Save recovered files to another disk. Never save them back to the damaged source disk.', generatedCommand:'Generated CLI command', imageWorkflowDisclosure:'🧊 Image-first workflow', sessionWorkflowDisclosure:'🗂️ Case / session tools', diagDisclosure:'🧰 Runtime diagnostics', recoveryReportTitle:'Recovery Complete Report', recoveryReportNote:'Complete files are placed in recovered/. Suspect, partial, and low-confidence results are quarantined in suspect/.', openHtmlReport:'🌐 Open HTML Report', copySummary:'📋 Copy Summary', collapseReport:'Collapse Report',
+    advancedSettings:'Advanced Settings', advancedNotice:'🛡️ Save recovered files to another disk. Never save them back to the damaged source disk.', generatedCommand:'Generated CLI command', confirm:'Confirm', cancel:'Cancel', close:'Close', sessionPathLabel:'Session folder path', sessionPathPrompt:'Paste the existing Session folder path.', artifactPathLabel:'Artifact file or folder path', artifactPathPrompt:'Paste the file or folder to import.', artifactKindLabel:'Artifact type', artifactKindPrompt:'Use auto or choose a known artifact type.', imageWorkflowDisclosure:'🧊 Image-first workflow', sessionWorkflowDisclosure:'🗂️ Case / session tools', diagDisclosure:'🧰 Runtime diagnostics', recoveryReportTitle:'Recovery Complete Report', recoveryReportNote:'Complete files are placed in recovered/. Suspect, partial, and low-confidence results are quarantined in suspect/.', openHtmlReport:'🌐 Open HTML Report', copySummary:'📋 Copy Summary', collapseReport:'Collapse Report',
     copied:'✓ Copied', commandCopied:'Command copied.', sampleLoaded:'Sample result loaded. Use the desktop app to run real recovery.', metrics:{default:['Records scanned','Files in result','Deleted in result','Visible data size','CLI report output (JSON / Text)','VFS scan result (JSON / Text)'], carver:['Signatures detected','Carved successfully','Confidence','Scanned data','Deep scan log','Carved result list'], apfs:['Superblock status','Object manager OID','Volumes','Block size','APFS superblock metadata','Subvolume structure list']},
     modes:{
       ntfs:{nav:'💾 Disk scan and recovery', title:'Disk Scan and Recovery', badge:'Windows / NTFS', emptyTitle:'Scan a disk and recover lost files', desc:'For Windows disks, SSDs, or NTFS partitions. After scanning, select files from the file tree to restore.', advice:'Best for Windows disks or NTFS partitions. Start with a normal scan, then use Deep Scan only if needed.'},
@@ -31,21 +31,21 @@ const I18N = {
 };
 I18N['zh-Hant'] = {
   appTitle:'波立克資料救援', brandLogo:'波', brandName:'波立克資料救援', brandSubtitle:'安全救援您的重要檔案',
-  navLabel:'掃描類型', sampleLabel:'範例資料', loadSample:'↻ 載入所選模式範例', advancedMode:'⚙️ 進階模式', sidebarNote:'以唯讀模式存取磁碟，絕不修改您的原始資料。',
+  navLabel:'掃描類型', mobileModeLabel:'掃描類型', sampleLabel:'範例資料', loadSample:'↻ 載入所選模式範例', advancedMode:'⚙️ 進階模式', sidebarNote:'以唯讀模式存取磁碟，絕不修改您的原始資料。',
   workbench:'資料救援工作台', runtimePreview:'預覽模式', desktopMode:'桌面 App 模式', previewModeMessage:'目前是預覽模式：可看範例畫面；真實掃描請用桌面 App 開啟。', reanalyze:'⟳ 重新分析', copyCommand:'⇩ 複製指令', chooseImage:'📁 選擇映像檔', startScan:'▶ 開始掃描', stop:'⏹ 中止', restoreSelected:'💾 還原選取的檔案',
   steps:{select:'選擇磁碟', scanning:'掃描中', restore:'選擇並還原'}, recommendedFlow:'建議流程', choose:'📁 選擇', regenerate:'重新產生', checkAgain:'重新檢查', notChecked:'尚未檢查', startSafeScan:'▶ 開始安全掃描', previewSample:'👀 先看範例結果', clear:'清除', selectUsable:'全選可用檔', selectedPrefix:'已選', details:'檔案詳細資訊', notSelected:'未選取',
   scanTitle:'正在掃描，請稍候...', scanSub:'系統正在安全地讀取磁碟內容，<br>這個過程不會修改您的任何資料。', scanReading:'讀取中...', stopCurrent:'⏹ 中止目前作業', scanTip:'大型磁碟掃描可能需要較久；按中止會要求目前讀取流程停止，實體磁碟模式會同時關閉管理員權限工作站。',
   safe:{readTitle:'唯讀掃描', readSub:'不寫入來源磁碟', saveTitle:'另存救援', saveSub:'避免覆蓋原資料', pickTitle:'勾選還原', pickSub:'掃完再挑要救的檔案', authTitle:'身分檢查', authSub:'來源與輸出必須是不同實體磁碟', imageTitle:'先建映像', imageSub:'掃 .img，不反覆磨原碟'},
   diskPick:'建立映像檔（建議） <span class="muted-inline">— 實體磁碟不可直接掃描</span>', detecting:'— 正在偵測... —', sourcePath:'來源映像檔路徑', ntfsDepth:'NTFS 掃描深度', ntfsOptions:['標準：自動估算完整 MFT（建議）','快速：先掃前 10,000 筆','保守：先掃前 50,000 筆'], ntfsHelp:'救援數量太少時請用「標準」；它會先讀取 $MFT 大小估算總紀錄數，而不是固定只掃一小段。',
   outputPath:'還原檔案儲存資料夾 <span class="danger-inline">請勿選來源磁碟</span>', outputHelp:'建議存到桌面、外接硬碟或另一個安全資料夾，避免把新檔案覆蓋到原本要救的磁碟。',
-  riskTitle:'🟢 掃描前風險檢查', riskLow:'低風險', riskInitial:'<strong>唯讀掃描。</strong> 開始前會檢查來源、格式與輸出位置，降低覆蓋原資料的風險。', riskRecommendation:'建議：救回檔案存到另一顆磁碟',
+  riskTitle:'🟢 掃描前風險檢查', riskCheckLabel:'掃描前風險檢查', riskReady:'可以開始，尚未偵測到明顯風險。', riskLow:'低風險', riskInitial:'<strong>唯讀掃描。</strong> 開始前會檢查來源、格式與輸出位置，降低覆蓋原資料的風險。', riskRecommendation:'建議：救回檔案存到另一顆磁碟',
   imageWorkflowTitle:'🧊 v1.9 映像檔優先 + ddrescue map', imageWorkflowBadge:'建議流程', imageWorkflowSummary:'如果來源是實體磁碟，建議先建立唯讀映像檔，再用 ddrescue map 報告確認壞區/未完成比例，最後才掃描 .img。', imageWorkflowCommand:'選擇來源後會產生成像、map 視覺化、驗證與 retry 指令。', copyImageWorkflowCommand:'複製成像 / map / retry 指令',
   sessionWorkflowTitle:'🗂️ v2.7 救援案件 Session + 客戶交付包', sessionWorkflowBadge:'建議建立', sessionWorkflowSummary:'每次救援建立一個案件資料夾，把 image、map、scan、recovery、quality、log、Dashboard、客戶版摘要與工程交接報告放在一起。', activeSessionStatus:'尚未啟用 Session。可先按「直接建立 Session」，App 會自動把還原輸出指向案件資料夾。', sessionWorkflowCommand:'選擇來源後會產生 session 建立、索引與檢查指令。',
   sessionButtons:['直接建立 Session','開啟既有 Session','使用 Session 輸出','更新索引','檢查 Session','開啟索引','匯入報告 / Artifacts','產生交接報告','開啟客戶版','開啟工程版','建立客戶交付 ZIP','開啟交付資料夾','複製 Session 指令'],
   diagTitle:'🧰 實機環境檢查', emptyHint:'🛡️ 唯讀模式：本程式絕對不會寫入或修改您的來源磁碟', qualityNote:'✅ 預設只會自動勾選完整或中信心項目；低信心碎片不會自動勾選，避免把垃圾檔混進成功檔。', foundFiles:'找到的檔案', pathFilterPlaceholder:'🔍 篩選路徑（例如 /Users/me/Desktop）', clearFilter:'✕ 清除', quickRecover:'⚡ 立刻救回', quickRecoverConfirm:'立刻救回這個檔案？\n\n檔案：{name}\n大小：{size}\n輸出：{path}\n\n按「確認」開始。', quickRecoverUnknownSize:'未知', filters:['全部','🖼 圖片','📄 文件','🎬 影片','🎵 音訊','🗑️ 已刪除','✅ 完整','🟡 可疑可修','🧩 部分救援','⚠️ 碎片'], itemCount:'個項目', fileCount:'個檔案', selectedApprox:'已選 {count} 個檔案・約 {size}', bucketCounts:'完整 {complete}・可疑 {possible}・部分 {partial}・碎片 {fragments}｜完整檔進 recovered/，其他隔離到 suspect/', emptySelectionSub:'預設不勾選 partial / fragments；真的需要殘檔時再手動勾選。', selectionMain:'先勾選要救回來的檔案', selectionSub:'可用 Shift 連續選取；還原前會顯示儲存位置。',
   status:{deleted:'🗑️ 已刪除', normal:'正常'}, qualityLabels:{high:'完整', medium:'可疑', low:'碎片'}, bucketTitles:{complete:'完整可用', possible:'可疑可修', partial:'部分救援', fragments:'低信心碎片'}, bucketHints:{complete:'預設勾選，輸出到 recovered/', possible:'預設勾選，但輸出時可能隔離', partial:'需手動勾選，輸出到 suspect/partial', fragments:'需手動勾選，通常只供專家檢查'}, qualitySummary:'救援品質分流：完整 {complete}、可疑可修 {possible}、部分救援 {partial}、低信心碎片 {fragments}。低信心項目不會自動勾選，避免垃圾檔混進成功結果。', qualityEmpty:'尚未載入掃描結果。開始掃描後會依品質分成 recovered/ 與 suspect/。', pathFilterLabel:'依路徑篩選結果',
   categoryLabels:{image:'圖片', doc:'文件', video:'影片', audio:'音訊'}, noFiles:'未找到任何檔案', noFilteredFiles:'此磁碟未找到「{type}」類型的可救援檔案', listHead:['檔名','狀態','判定','分流','大小'], selectAria:'選取 {name}', filePath:'檔案路徑', detailsPrompt:'請點擊左側的檔案以查看詳細資訊', nodeType:'節點類型', allocationStatus:'分配狀態', fileSize:'檔案大小', recoveryConfidence:'救援信心', confidence:'信心值', routeStrategy:'分流策略', qualityTag:'品質標記', readMode:'讀取模式', lostBytes:'遺失 {bytes} bytes', outputPreview:'預計還原到', folderNotRestorable:'資料夾本身不可直接還原，請勾選裡面的檔案',
-  advancedSettings:'進階設定', advancedNotice:'🛡️ 請將還原的檔案存到其他磁碟，切勿存回損毀的來源磁碟！', generatedCommand:'生成的 CLI 執行指令', imageWorkflowDisclosure:'🧊 映像檔優先流程', sessionWorkflowDisclosure:'🗂️ 案件／Session 工具', diagDisclosure:'🧰 實機環境檢查', recoveryReportTitle:'還原完成報告', recoveryReportNote:'完整成功檔會在 recovered/，可疑、部分或低信心結果會隔離到 suspect/。', openHtmlReport:'🌐 開啟 HTML 報告', copySummary:'📋 複製摘要', collapseReport:'收起報告', copied:'✓ 已複製', commandCopied:'指令已複製。', sampleLoaded:'已載入範例結果。正式救援請用桌面 App 開始掃描。',
+  advancedSettings:'進階設定', advancedNotice:'🛡️ 請將還原的檔案存到其他磁碟，切勿存回損毀的來源磁碟！', generatedCommand:'生成的 CLI 執行指令', confirm:'確認', cancel:'取消', close:'關閉', sessionPathLabel:'Session 資料夾路徑', sessionPathPrompt:'請貼上既有 Session 資料夾路徑。', artifactPathLabel:'Artifact 檔案或資料夾路徑', artifactPathPrompt:'請貼上要匯入的檔案或資料夾路徑。', artifactKindLabel:'Artifact 類型', artifactKindPrompt:'可輸入 auto，或選擇已知的 Artifact 類型。', imageWorkflowDisclosure:'🧊 映像檔優先流程', sessionWorkflowDisclosure:'🗂️ 案件／Session 工具', diagDisclosure:'🧰 實機環境檢查', recoveryReportTitle:'還原完成報告', recoveryReportNote:'完整成功檔會在 recovered/，可疑、部分或低信心結果會隔離到 suspect/。', openHtmlReport:'🌐 開啟 HTML 報告', copySummary:'📋 複製摘要', collapseReport:'收起報告', copied:'✓ 已複製', commandCopied:'指令已複製。', sampleLoaded:'已載入範例結果。正式救援請用桌面 App 開始掃描。',
   metrics:{default:['掃描的記錄數','結果中的檔案','結果中的已刪除檔案','結果資料大小','CLI 報告輸出 (JSON / Text)','VFS 掃描結果 (JSON / Text)'], carver:['偵測到的特徵碼','成功彫刻數','信心值','掃描資料量','深度掃描日誌','彫刻結果清單'], apfs:['超級區塊狀態','物件管理 OID','卷宗個數','Block 大小','APFS 超區元數據','子卷結構列表']},
   modes:{
     ntfs:{nav:'💾 硬碟掃描與救援', title:'硬碟掃描與救援', badge:'Windows / NTFS', emptyTitle:'掃描硬碟，找回遺失檔案', desc:'適合一般 Windows 硬碟、SSD 或 NTFS 分割區。掃描後會列出檔案樹，讓你勾選要還原的項目。', advice:'適合 Windows 硬碟或 NTFS 分割區，建議先跑一般掃描；找不到再改用深度碎塊掃描。'},
@@ -233,6 +233,7 @@ function applyI18n(){
   setText('brandName','brandName','Polik Recovery');
   setText('brandSubtitle','brandSubtitle');
   setText('navLabel','navLabel');
+  setText('mobileModeLabel','mobileModeLabel');
   setText('sampleLabel','sampleLabel');
   setText('loadSampleData','loadSample');
   setText('advancedModeLabel','advancedMode');
@@ -324,6 +325,14 @@ function applyI18n(){
   const lang=$('languageSelect');
   if(lang) lang.value=currentLocale;
   setButtonList(['btnModeNtfs','btnModeExfat','btnModeFat32','btnModeApfs','btnModeCarver'], ['ntfs','exfat','fat32','apfs','carver'].map(m=>tr(`modes.${m}.nav`)));
+  const mobileMode=$('mobileModeSelect');
+  if(mobileMode){
+    ['ntfs','exfat','fat32','apfs','carver'].forEach((mode,idx)=>{
+      const option=mobileMode.options[idx];
+      if(option) option.textContent=tr(`modes.${mode}.nav`);
+    });
+    mobileMode.value=activeMode;
+  }
   $$('.fb[data-f]').forEach(btn=>btn.setAttribute('aria-pressed', String(btn.classList.contains('act'))));
   setText('pathFilterLabel','pathFilterLabel','Filter by path');
   applyMetricLabels(activeMode==='carver'?'carver':activeMode==='apfs'?'apfs':'default');
@@ -426,11 +435,63 @@ function riskLevelFromScore(score){
   return 'low';
 }
 function riskLevelLabel(level){
-  return {low:'低風險',medium:'中等風險',high:'高風險'}[level] || '未知';
+  const labels={low:['低風險','Low risk'],medium:['中等風險','Medium risk'],high:['高風險','High risk']};
+  const pair=labels[level] || ['未知','Unknown'];
+  return currentLocale==='zh-Hant' ? pair[0] : pair[1];
 }
 function riskIcon(level){
   return {low:'🟢',medium:'🟡',high:'🔴'}[level] || '⚪';
 }
+const RISK_EN = {
+  '尚未選擇來源磁碟':'No source selected',
+  '請先選擇要救援的磁碟或映像檔。':'Choose the disk image to scan first.',
+  '實體磁碟掃描':'Physical-disk scan',
+  '第一次讀取可能需要管理員授權；請確認不要把救回檔案存回同一顆磁碟。':'The first read may require authorization; never save recovered files back to the same disk.',
+  '實體磁碟：請先建立映像檔':'Physical disk: create an image first',
+  '映像檔掃描':'Image scan',
+  '使用磁碟映像檔最安全，原始磁碟不會被二次寫入。':'A disk image is safest; the original disk is not read repeatedly.',
+  '映像檔：較安全':'Image: safer',
+  'SSD / TRIM 風險':'SSD / TRIM risk',
+  'SSD 或 Mac 內建磁碟刪除後可能已被 TRIM 清掉；掃得到不代表資料區塊仍存在。':'SSD or an internal Mac disk may have discarded deleted blocks through TRIM; a scan cannot guarantee the data remains.',
+  'SSD/TRIM：成功率可能偏低':'SSD/TRIM: success rate may be lower',
+  '建議先建立 .img':'Create an .img first',
+  'APFS v1.2 限制':'APFS limitations',
+  '已支援未加密 APFS 的 extent 提取，但 FileVault/加密、壓縮檔、clone、snapshot-only 或 TRIM 後資料仍可能只進 suspect/partial。':'Unencrypted APFS extents are supported; FileVault, encryption, compression, clones, snapshots, and TRIM-affected data may remain suspect or partial.',
+  'APFS：未加密 extent 可嘗試提取':'APFS: unencrypted extents can be attempted',
+  '加密磁碟':'Encrypted disk',
+  '疑似加密或 FileVault，未解鎖時深度掃描只會看到加密亂碼。':'The disk may be encrypted or FileVault-protected; without unlocking, deep scan sees encrypted bytes.',
+  '疑似加密':'Possibly encrypted',
+  '深度碎塊掃描':'Deep fragment scan',
+  '適合格式損毀或找不到檔案系統；但碎片化大檔可能只能輸出 suspect/，垃圾比例會比檔案系統掃描高。':'Useful when the filesystem is damaged or unknown; fragmented files may be suspect and junk results are more likely.',
+  'Deep Scan：假陽性較高':'Deep Scan: higher false-positive risk',
+  '快速掃描範圍有限':'Quick scan has limited coverage',
+  '只掃前 10,000 筆 MFT，速度快但可能漏掉大量檔案；救少時請改標準完整 MFT。':'Only the first 10,000 MFT records are scanned; it is faster but can miss files. Use the standard full MFT scan when recovery is sparse.',
+  'NTFS 快速：可能漏救':'NTFS quick: may miss files',
+  'NTFS 標準掃描':'NTFS standard scan',
+  '會依 $MFT 大小估算掃描範圍，通常比固定筆數更不容易漏檔。':'The scan range is estimated from $MFT size, which is less likely to miss files than a fixed record count.',
+  'NTFS 標準：建議':'NTFS standard: recommended',
+  '隨身碟 / 記憶卡刪除檔':'Removable-media deleted files',
+  '刪除後 FAT chain 可能被清掉；若只能連續讀取，程式會標記為可疑，不會假裝完整成功。':'The FAT chain may be cleared after deletion; contiguous-only recovery is marked suspect instead of being presented as complete.',
+  '輸出位置需要調整':'Output location needs attention',
+  '請先選擇還原檔案要存放的資料夾。':'Choose a folder for recovered files first.',
+  '儲存位置不能是磁碟裝置，請選擇資料夾。':'The output cannot be a disk device; choose a folder.',
+  '儲存位置必須是資料夾，不能是單一檔案路徑。請按「選擇」挑資料夾。':'The output must be a folder, not a file path. Use Choose to select a folder.',
+  '儲存資料夾看起來和來源映像檔在同一個位置，為避免覆蓋原資料，請改選其他磁碟或桌面資料夾。':'The output appears to share a location with the source image. Choose another disk or a desktop folder to avoid overwriting source data.',
+  '正在檢查來源與輸出是否位於不同實體磁碟，完成前不能開始。':'Checking whether source and output are on different physical disks; scanning is blocked until it finishes.',
+  '輸出位置尚未通過 physical store 隔離檢查。':'The output has not passed the physical-store isolation check.',
+  '輸出位置有風險':'Output location has a risk',
+  '輸出位置通過基本檢查':'Output location passed the basic check',
+  '目前看起來是資料夾路徑；仍建議使用另一顆外接硬碟或桌面資料夾。':'This looks like a folder path; another external disk or a desktop folder is still recommended.',
+  '輸出資料夾 OK':'Output folder OK',
+  '外接裝置':'External device',
+  '來源是外接裝置，較容易避免系統背景寫入；掃描前請先停止繼續拍照、下載或複製檔案。':'The source is removable; stop taking photos, downloading, or copying files before scanning.',
+  '內建磁碟':'Internal disk',
+  '內建系統碟容易被背景程序寫入，刪除資料可能更快被覆蓋。':'Background processes may write to an internal system disk and overwrite deleted data sooner.',
+  '內建磁碟：覆蓋風險較高':'Internal disk: higher overwrite risk',
+  '先建 image 再掃描':'Create an image before scanning',
+  '建議：救回檔案存到另一顆磁碟':'Recommendation: save recovered files to another disk'
+};
+function riskText(text){ return currentLocale==='zh-Hant' ? text : (RISK_EN[text] || text); }
 function diskLooksLikeSsd(disk){
   const text = `${disk?.label||''} ${disk?.fs_type||''}`.toLowerCase();
   return !!disk?.solid_state || text.includes('ssd') || text.includes('solid state') || text.includes('apple ssd') || (!disk?.removable && activeMode==='apfs');
@@ -517,15 +578,15 @@ function renderRiskPanel(){
   if(!panel) return;
   const risk=currentRiskAssessment();
   panel.className=`risk-panel ${risk.level}`;
-  $('riskTitle').textContent=`${riskIcon(risk.level)} 掃描前風險檢查`;
+  $('riskTitle').textContent=`${riskIcon(risk.level)} ${tr('riskCheckLabel','Pre-scan risk check')}`;
   $('riskScore').textContent=`${riskLevelLabel(risk.level)}｜${risk.score}/100`;
   $('riskBody').innerHTML=risk.rows.map(r=>{
     const icon=r.severity==='danger'?'⚠️':r.severity==='warn'?'🟡':'✅';
     const cls=r.severity==='danger'?'danger':r.severity==='warn'?'warn':'';
-    return `<div class="risk-row ${cls}"><span>${icon}</span><span><strong>${esc(r.title)}。</strong> ${esc(r.detail)}</span></div>`;
-  }).join('') || '<div class="risk-row"><span>✅</span><span><strong>可開始。</strong> 未偵測到明顯風險。</span></div>';
-  $('riskActions').innerHTML=(risk.chips.length?risk.chips:[{cls:'good',text:'建議：救回檔案存到另一顆磁碟'}])
-    .map(c=>`<span class="risk-chip ${c.cls}">${esc(c.text)}</span>`).join('');
+    return `<div class="risk-row ${cls}"><span>${icon}</span><span><strong>${esc(riskText(r.title))}。</strong> ${esc(riskText(r.detail))}</span></div>`;
+  }).join('') || `<div class="risk-row"><span>✅</span><span><strong>${esc(tr('riskReady','Ready.'))}</strong></span></div>`;
+  $('riskActions').innerHTML=(risk.chips.length?risk.chips:[{cls:'good',text:tr('riskRecommendation','Recommendation: save recovered files to another disk')}])
+    .map(c=>`<span class="risk-chip ${c.cls}">${esc(riskText(c.text))}</span>`).join('');
 }
 
 function imageOutputDir(){
@@ -719,7 +780,7 @@ async function createDesktopSession(){
 async function openDesktopSession(){
   const core=getTauri()?.core;
   const def=activeSession?.sessionDir || lastSessionPlan?.sessionDir || sessionRootDir();
-  const dir=prompt('請貼上既有 Session 資料夾路徑：', def);
+  const dir=await requestAppInput(tr('sessionPathLabel','Session folder path'), tr('sessionPathPrompt','Paste the existing Session folder path.'), def, {label:tr('sessionPathLabel','Session folder path')});
   if(!dir) return;
   if(!core){ setAS('目前不是 Tauri App 模式，請使用複製指令方式開啟 Session。','error'); return; }
   try{
@@ -770,9 +831,9 @@ async function openDesktopSessionIndex(){
 async function importSessionArtifact(){
   if(!activeSession?.sessionDir){ setAS('尚未啟用 Session。請先建立或開啟 Session。','error'); return; }
   const core=getTauri()?.core;
-  const source=prompt('請貼上要匯入的檔案或資料夾路徑：\n例如 image manifest、ddrescue .map、scan report、recovery_report.html、quality_report.json、log、Codex artifacts zip');
+  const source=await requestAppInput(tr('artifactPathLabel','Artifact file or folder path'), tr('artifactPathPrompt','Paste the file or folder to import.\nExamples: image manifest, ddrescue .map, scan report, recovery_report.html, quality_report.json, log, or artifacts zip.'), '', {label:tr('artifactPathLabel','Artifact file or folder path')});
   if(!source || !source.trim()) return;
-  const kind=prompt('Artifact 類型（可留 auto）：\nauto / source_image / ddrescue_map / scan_report / recovery_report / quality_report / log / handoff / intake','auto') || 'auto';
+  const kind=await requestAppInput(tr('artifactKindLabel','Artifact type'), `${tr('artifactKindPrompt','Use auto or choose a known artifact type.')}\nauto / source_image / ddrescue_map / scan_report / recovery_report / quality_report / log / handoff / intake`, 'auto', {label:tr('artifactKindLabel','Artifact type')}) || 'auto';
   if(!core){
     const cmd=`python3 tools/session/import_session_artifacts.py --session '${activeSession.sessionDir}' --kind '${kind}' '${source.trim()}'`;
     try{ if(navigator.clipboard?.writeText) await navigator.clipboard.writeText(cmd); }catch(_){ }
@@ -840,28 +901,63 @@ async function openDeliveryFolder(){
   catch(err){ showFriendlyError('開啟交付資料夾失敗', err, 'Session delivery'); }
 }
 function showAppDialog(title, message, options={}){
-  const {confirm=false, confirmLabel='確認', cancelLabel='取消'}=options;
+  const {confirm=false, confirmLabel=tr('confirm','Confirm'), cancelLabel=tr('cancel','Cancel'), input=null}=options;
   return new Promise(resolve=>{
+    const previousFocus=document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const suffix=`${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const titleId=`appDialogTitle-${suffix}`;
+    const messageId=`appDialogMessage-${suffix}`;
+    const inputId=`appDialogInput-${suffix}`;
     const backdrop=document.createElement('div');
     backdrop.className='app-dialog-backdrop';
-    backdrop.innerHTML=`<div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="appDialogTitle">
-      <div id="appDialogTitle" class="app-dialog-title">${esc(title)}</div>
-      <div class="app-dialog-message">${esc(message)}</div>
+    backdrop.innerHTML=`<div class="app-dialog" role="dialog" aria-modal="true" aria-labelledby="${titleId}" aria-describedby="${messageId}">
+      <div id="${titleId}" class="app-dialog-title">${esc(title)}</div>
+      <div id="${messageId}" class="app-dialog-message">${esc(message)}</div>
+      ${input?`<label class="app-dialog-label" for="${inputId}">${esc(input.label||'Value')}</label><input id="${inputId}" class="app-dialog-input" type="${esc(input.type||'text')}" value="${esc(input.value||'')}" placeholder="${esc(input.placeholder||'')}" autocomplete="off">`:''}
       <div class="app-dialog-actions">
-        <button type="button" class="ghost" data-dialog-cancel>${esc(confirm ? cancelLabel : '關閉')}</button>
+        <button type="button" class="ghost" data-dialog-cancel>${esc(confirm ? cancelLabel : tr('close','Close'))}</button>
         ${confirm?`<button type="button" class="primary" data-dialog-confirm>${esc(confirmLabel)}</button>`:''}
       </div>
     </div>`;
     document.body.appendChild(backdrop);
-    const finish=value=>{ backdrop.remove(); resolve(value); };
-    backdrop.querySelector('[data-dialog-cancel]').addEventListener('click',()=>finish(false));
-    backdrop.querySelector('[data-dialog-confirm]')?.addEventListener('click',()=>finish(true));
-    backdrop.addEventListener('click',event=>{ if(event.target===backdrop) finish(false); });
-    backdrop.querySelector(confirm?'[data-dialog-confirm]':'[data-dialog-cancel]').focus();
+    const dialog=backdrop.querySelector('.app-dialog');
+    const field=input?backdrop.querySelector('.app-dialog-input'):null;
+    let closed=false;
+    const finish=value=>{
+      if(closed) return;
+      closed=true;
+      backdrop.removeEventListener('keydown',onKeyDown);
+      backdrop.remove();
+      previousFocus?.focus?.({preventScroll:true});
+      resolve(value);
+    };
+    const onKeyDown=event=>{
+      if(event.key==='Escape'){ event.preventDefault(); finish(input?null:false); return; }
+      if(event.key==='Enter' && confirm && (event.target===field || event.target?.matches?.('[data-dialog-confirm]'))){
+        event.preventDefault();
+        finish(input ? field.value : true);
+        return;
+      }
+      if(event.key!=='Tab') return;
+      const focusable=[...dialog.querySelectorAll('button,input,textarea,select,[href],[tabindex]:not([tabindex="-1"])')].filter(el=>!el.disabled);
+      if(!focusable.length) return;
+      const first=focusable[0], last=focusable[focusable.length-1];
+      if(event.shiftKey && document.activeElement===first){ event.preventDefault(); last.focus(); }
+      else if(!event.shiftKey && document.activeElement===last){ event.preventDefault(); first.focus(); }
+    };
+    backdrop.addEventListener('keydown',onKeyDown);
+    backdrop.querySelector('[data-dialog-cancel]').addEventListener('click',()=>finish(input?null:false));
+    backdrop.querySelector('[data-dialog-confirm]')?.addEventListener('click',()=>finish(input ? field.value : true));
+    backdrop.addEventListener('click',event=>{ if(event.target===backdrop) finish(input?null:false); });
+    (field || backdrop.querySelector(confirm?'[data-dialog-confirm]':'[data-dialog-cancel]'))?.focus();
+    field?.select();
   });
 }
 function showAppNotice(title, message){ return showAppDialog(title, message); }
 function requestAppConfirmation(message, title='請確認'){ return showAppDialog(title, message, {confirm:true}); }
+function requestAppInput(title, message, value='', options={}){
+  return showAppDialog(title, message, {confirm:true, input:{value, ...options}});
+}
 async function confirmRiskBeforeScan(){
   const risk=currentRiskAssessment();
   const hardProblem=outputDirProblem();
@@ -1408,6 +1504,7 @@ function setModeConfig(mode, {loadSample=true}={}){
   document.querySelectorAll('.nav button').forEach(b=>b.classList.remove('active'));
   const ids={ntfs:'btnModeNtfs',exfat:'btnModeExfat',fat32:'btnModeFat32',apfs:'btnModeApfs',carver:'btnModeCarver'};
   $(ids[mode]).classList.add('active');
+  if($('mobileModeSelect')) $('mobileModeSelect').value=mode;
   const cfg=samples[mode];
   const meta=modeMeta[mode];
   const localized=trObj(`modes.${mode}`);
@@ -1704,7 +1801,7 @@ function makeListRow(e){
   const row=document.createElement('div');
   row.className='tree-row virtual-row'+(isSel?' sel':'');
   row.dataset.entryId=String(e.id);
-  row.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="tree-name"><span class="ico">${CAT_ICON[cat]||CAT_ICON.other}</span><span title="${esc(e.path)}">${esc(fname(e.path))}</span></div><span class="pill ${stCls(e.status)}">${stLbl(e.status)}</span><span class="pill ${qualityClass(e)}">${e.kind==='File'?qualityLabel(e):'-'}</span><span class="pill ${routeClass(e)}">${e.kind==='File'?routeLabel(e):'-'}</span><span class="entry-size">${e.size==='-'?'-':fmtBytes(+e.size)}</span>${e.kind==='File'?'<button class="quick-rec" tabindex="-1">⚡ 立刻救回</button>':''}`;
+  row.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="tree-name"><span class="ico">${CAT_ICON[cat]||CAT_ICON.other}</span><span title="${esc(e.path)}">${esc(fname(e.path))}</span></div><span class="pill ${stCls(e.status)}">${stLbl(e.status)}</span><span class="pill ${qualityClass(e)}">${e.kind==='File'?qualityLabel(e):'-'}</span><span class="pill ${routeClass(e)}">${e.kind==='File'?routeLabel(e):'-'}</span><span class="entry-size">${e.size==='-'?'-':fmtBytes(+e.size)}</span>${e.kind==='File'?`<button class="quick-rec" type="button" aria-label="${esc(tr('quickRecover'))}">${esc(tr('quickRecover'))}</button>`:''}`;
   return row;
 }
 
@@ -1819,7 +1916,7 @@ function makeGridItem(e){
   item.className='gi'+(isSel?' sel':'')+(isDel?' del':'');
   item.dataset.entryId=String(e.id);
   if(isImg) item.dataset.thumbEntryId=String(e.id);
-  item.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="gi-thumb">${e.kind==='File'?`<span class="mini-q ${qualityBucket(e)}"></span>`:''}${thumbContent}${ext?`<span class="gi-badge${isDel?' del':''}">${ext}</span>`:''}</div><div class="gi-lbl" title="${esc(e.path)}">${esc(fname(e.path))}</div>${e.kind==='File'?'<button class="quick-rec-g" tabindex="-1">⚡ 立刻救回</button>':''}`;
+  item.innerHTML=`<input class="pick" type="checkbox" ${isSel?'checked':''} ${e.kind==='Directory'?'disabled':''} aria-label="${esc(trf('selectAria',{name:fname(e.path)}))}"><div class="gi-thumb">${e.kind==='File'?`<span class="mini-q ${qualityBucket(e)}"></span>`:''}${thumbContent}${ext?`<span class="gi-badge${isDel?' del':''}">${ext}</span>`:''}</div><div class="gi-lbl" title="${esc(e.path)}">${esc(fname(e.path))}</div>${e.kind==='File'?`<button class="quick-rec-g" type="button" aria-label="${esc(tr('quickRecover'))}">${esc(tr('quickRecover'))}</button>`:''}`;
   return item;
 }
 
@@ -1946,6 +2043,7 @@ $('btnModeExfat').addEventListener('click',()=>switchMode('exfat'));
 $('btnModeFat32').addEventListener('click',()=>switchMode('fat32'));
 $('btnModeApfs').addEventListener('click',()=>switchMode('apfs'));
 $('btnModeCarver').addEventListener('click',()=>switchMode('carver'));
+$('mobileModeSelect')?.addEventListener('change',event=>switchMode(event.target.value));
 $('loadSampleData').addEventListener('click',()=>setMode(activeMode));
 $('languageSelect')?.addEventListener('change',e=>setLocale(e.target.value));
 $('previewSampleBtn').addEventListener('click',()=>{ setMode(activeMode); setAS(tr('sampleLoaded'),'ok'); });

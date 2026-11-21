@@ -53,6 +53,16 @@
         <span class="status-chip safe" id="modeBadge">Windows / NTFS</span>
         <span class="status-chip" id="runtimeBadge">Preview mode</span>
       </div>
+      <label class="mobile-mode" for="mobileModeSelect">
+        <span id="mobileModeLabel">Scan type</span>
+        <select id="mobileModeSelect">
+          <option value="ntfs">💾 Disk scan and recovery</option>
+          <option value="exfat">📁 exFAT removable recovery</option>
+          <option value="fat32">🧩 FAT32 card recovery</option>
+          <option value="apfs">🍎 Mac disk recovery</option>
+          <option value="carver">🔍 Deep scan</option>
+        </select>
+      </label>
       <div class="toolbar">
         <select id="languageSelect" class="lang-select" aria-label="Language">
           <option value="en">English</option>
@@ -287,7 +297,7 @@
             <div class="pane-hd">
               <strong id="foundFilesTitle">Found files</strong>
               <div class="pane-hd-r">
-                <span class="pill" id="entryCount">0 個項目</span>
+                <span class="pill" id="entryCount" aria-live="polite">0 個項目</span>
               <button class="vtbtn act" id="btnList" type="button" title="清單" aria-pressed="true">☰</button>
               <button class="vtbtn" id="btnGrid" type="button" title="格子" aria-pressed="false">⊞</button>
               </div>
@@ -312,7 +322,7 @@
               <input id="pathFilter" class="path-filter" type="text" placeholder="🔍 Filter by path" autocomplete="off" spellcheck="false">
               <button class="fb soft flex-shrink" id="clearPathFilter" type="button">✕ Clear</button>
             </div>
-            <div class="selection-strip" id="selectionStrip">
+            <div class="selection-strip" id="selectionStrip" role="status" aria-live="polite">
               <div class="selection-main" id="selectionMain">Select files to recover first</div>
               <div class="selection-sub" id="selectionSub">Use Shift for range selection. The destination is shown before restore.</div>
             </div>
