@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 51,
-  "updated_at": "2026-11-21T21:00:00+08:00",
+  "revision": 52,
+  "updated_at": "2026-11-21T23:30:00+08:00",
   "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -680,6 +680,93 @@
         "根因（讀碼確認）：(1) fs_oid／root_tree_oid 為 virtual OID，未經 container／volume OMAP B-tree 對照就當實體區塊讀；(2) 未選最新 checkpoint（應掃 checkpoint descriptor area 取最大 xid 的 NXSB）；(3) B-tree 未處理 BTNODE_FIXED_KV_SIZE（kvoff vs kvloc）、root node 尾端 btree_info（40 bytes）造成 value 區位移；FS tree index node 子節點也是 virtual OID；(4) j_key 是單一 u64（低 60 bits obj_id、高 4 bits type），型別應為 INODE=3、DIR_REC=9、FILE_EXTENT=8，現碼用 key[8..12] 與 2/3；(5) drec key 為 name_len_and_hash（低 10 bits 長度）；檔案大小在 inode xfield INO_EXT_TYPE_DSTREAM，不在固定欄位。",
         "連帶：tools/quality/generate_apfs_fixtures.py 產生的是依錯誤格式的 APFS-like 資料，重寫後需同步改為真實結構或以 hdiutil 映像取代。",
         "限制：尚未驗證多 volume 系統容器、snapshot、非連續 checkpoint area、透明壓縮（decmpfs）、加密 volume 與已刪除檔案。"
+      ]
+    },
+    {
+      "id": "D1",
+      "title": "FAT32 已刪除長檔名還原",
+      "priority": "P1",
+      "depends_on": [
+        "R5"
+      ],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T23:30:00+08:00",
+      "finished_at": "2026-11-21T23:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "parse_directory_entries 保留 0xE5 的 LFN 片段，依出現順序反轉組回；以長檔名首字大寫推得短檔名首位元組驗證 checksum（任意首位元組皆可湊出 checksum，故不可暴力比對）；新增 2 個單元測試含 checksum 錯誤退回短檔名。",
+        "python3 tools/macos/run_real_fs_image_gate.py --with-deleted：fat32/exfat/apfs 刪除案例皆 46/46（含 5 個已刪除檔：5MB、中文檔名、長檔名、8.3 名稱、子資料夾）SHA-256 相符；測試後 hdiutil info 無殘留掛載。"
+      ],
+      "notes": [
+        "修正前已刪除且需長檔名的檔案只顯示短檔名（_ONE_S~7.TXT）；8.3 原生名稱的首字元已被覆寫，維持 _ 佔位為正確呈現。"
+      ]
+    },
+    {
+      "id": "D2",
+      "title": "APFS 已刪除檔案（過期 FS-tree 節點）",
+      "priority": "P1",
+      "depends_on": [
+        "R4"
+      ],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T23:30:00+08:00",
+      "finished_at": "2026-11-21T23:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "spec.rs 新增 collect_stale_records：整個容器以 1MB 批次讀取，挑出 checksum 正確的 FSTREE leaf 節點，每筆記錄保留最新 xid；不在現行樹的 drec 視為 Deleted，extract 找不到現行 inode 時自動退回過期記錄。",
+        "新增 scan_apfs_vfs_with_deleted、CLI apfs-scan-vfs --include-deleted；apfs-extract 自動回退；新增單元測試 stale_records_surface_only_deleted_files_with_newest_version。",
+        "python3 tools/macos/run_real_fs_image_gate.py --with-deleted：fat32/exfat/apfs 刪除案例皆 46/46（含 5 個已刪除檔：5MB、中文檔名、長檔名、8.3 名稱、子資料夾）SHA-256 相符；測試後 hdiutil info 無殘留掛載。"
+      ],
+      "notes": [
+        "限制：過期節點無 volume 身分，暫歸第一個 volume（多 volume 容器未驗證）；未驗證已被覆寫或碎片化的已刪除檔。"
+      ]
+    },
+    {
+      "id": "D3",
+      "title": "真實映像門禁 --with-deleted 模式",
+      "priority": "P1",
+      "depends_on": [
+        "D1",
+        "D2"
+      ],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-21T23:30:00+08:00",
+      "finished_at": "2026-11-21T23:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "新增 delete_files_in_image：私有掛載點 attach、以 hdiutil info -plist 確認掛載點屬於該映像後才刪檔、依掛載點 detach（重試 3 次）；三種檔案系統刪除案例皆設為必過。",
+        "python3 tools/macos/run_real_fs_image_gate.py --with-deleted：fat32/exfat/apfs 刪除案例皆 46/46（含 5 個已刪除檔：5MB、中文檔名、長檔名、8.3 名稱、子資料夾）SHA-256 相符；測試後 hdiutil info 無殘留掛載。"
+      ],
+      "notes": [
+        "擁有者於 2026-11-21 核准本機掛載自建拋棄式映像；CI 預設不啟用 --with-deleted（是否在 CI 啟用待擁有者決定）。"
+      ]
+    },
+    {
+      "id": "D4",
+      "title": "桌面 App 提供 APFS 已刪除檔掃描選項（含進度與取消）",
+      "priority": "P2",
+      "depends_on": [
+        "D2"
+      ],
+      "status": "todo",
+      "owner": null,
+      "branch": null,
+      "started_at": null,
+      "finished_at": null,
+      "next_step": "在 scan.rs APFS 分支加入 include_deleted 參數與進度回報，前端加入勾選項並更新 CSP/前端檢查。",
+      "blockers": [],
+      "evidence": [],
+      "notes": [
+        "collect_stale_records 需全容器讀取；需接入 job token 取消與進度事件後，再於桌面 APFS 模式提供選項。"
       ]
     }
   ]

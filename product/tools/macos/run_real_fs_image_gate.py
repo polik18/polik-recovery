@@ -6,9 +6,17 @@ real FAT32 / exFAT / APFS images (with and without a GPT partition map), then
 runs the Polik CLI end to end: partition detection -> VFS scan -> per-file
 extraction -> SHA-256 comparison against the source bytes.
 
-Safety: this script never attaches, mounts or reads any /dev device itself.
-`hdiutil create -srcfolder` is the only formatter used, and the CLI only reads
-the resulting regular image files. Images are written under
+Safety: by default this script never attaches, mounts or reads any /dev
+device. `hdiutil create -srcfolder` is the only formatter used, and the CLI
+only reads the resulting regular image files.
+
+`--with-deleted` (requires explicit human approval, see product/AGENTS.md)
+additionally attaches each freshly created disposable image at a private
+mount point under target/, deletes a fixed set of files through that mount
+point, detaches it by mount point, and checks that the deleted files are
+reported as Deleted and recovered byte-exact. It verifies with
+`hdiutil info -plist` that the mount point belongs to that exact image before
+deleting anything, and never touches any other device. Images are written under
 `fixtures/real_fs_generated/` (ignored by git) because debug builds only allow
 the fixture -> target quality override inside the product tree.
 """
@@ -18,10 +26,12 @@ import argparse
 import hashlib
 import json
 import platform
+import plistlib
 import random
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 FILESYSTEMS = {
@@ -32,6 +42,17 @@ FILESYSTEMS = {
 }
 LAYOUTS = ["NONE", "GPTSPUD"]
 PARTITION_FS_NAMES = {"fat32": "FAT32", "exfat": "exFAT", "apfs": "APFS"}
+# Files removed in --with-deleted mode: large binary, CJK name, long mixed
+# case name, an 8.3-compatible name and a file in a nested directory.
+DELETED_PATHS = frozenset({
+    "/docs/report.bin",
+    "/docs/nested/中文檔名.txt",
+    "/Mixed Case Long Name.TXT",
+    "/docs/f07.txt",
+    "/docs/nested/small.dat",
+})
+# Deleted-file recovery is only required where it is proven to work.
+DELETED_REQUIRED = {"fat32": True, "exfat": True, "apfs": True}
 IGNORED_PREFIXES = ("/.fseventsd", "/.Spotlight-V100", "/.Trashes", "/.TemporaryItems")
 
 
@@ -72,12 +93,57 @@ def create_image(src: Path, image: Path, fs_value: str, layout: str) -> None:
         raise RuntimeError(f"hdiutil create failed: {result.stderr.strip()}")
 
 
+def image_mount_point(image: Path) -> str | None:
+    info = plistlib.loads(subprocess.run(["hdiutil", "info", "-plist"], capture_output=True,
+                                         check=True).stdout)
+    for attached in info.get("images", []):
+        if Path(attached.get("image-path", "")).resolve() != image.resolve():
+            continue
+        for entity in attached.get("system-entities", []):
+            if entity.get("mount-point"):
+                return entity["mount-point"]
+    return None
+
+
+def delete_files_in_image(image: Path, mount: Path, paths: frozenset[str]) -> None:
+    """Attach a disposable image privately, delete `paths`, then detach."""
+    if mount.exists():
+        shutil.rmtree(mount)
+    mount.mkdir(parents=True)
+    subprocess.run(["hdiutil", "attach", "-nobrowse", "-noautoopen", "-mountpoint", str(mount),
+                    str(image)], capture_output=True, check=True)
+    try:
+        mounted = image_mount_point(image)
+        if mounted is None or Path(mounted).resolve() != mount.resolve():
+            raise RuntimeError(f"refusing to delete: {image} is not mounted at {mount}")
+        for rel in sorted(paths):
+            (mount / rel.lstrip("/")).unlink()
+        subprocess.run(["sync"], check=True)
+    finally:
+        for attempt in range(3):
+            if subprocess.run(["hdiutil", "detach", str(mount)],
+                              capture_output=True).returncode == 0:
+                break
+            time.sleep(1 + attempt)
+        else:
+            raise RuntimeError(f"could not detach {mount}; detach it manually")
+
+
+def deleted_name_matches(expected_path: str, found_path: str) -> bool:
+    """FAT deletion overwrites the first byte of 8.3-only names."""
+    if expected_path == found_path:
+        return True
+    head, _, name = expected_path.rpartition("/")
+    return found_path == f"{head}/_{name[1:]}"
+
+
 def sha256(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
 
 
 def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
-             expected: dict[str, bytes], out_dir: Path) -> dict:
+             expected: dict[str, bytes], out_dir: Path,
+             deleted: frozenset[str] = frozenset()) -> dict:
     _, prefix, id_flag, _ = FILESYSTEMS[fs]
     case = {"filesystem": fs, "layout": layout, "image": str(image.relative_to(project)),
             "errors": []}
@@ -96,25 +162,37 @@ def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
     offset = match[0]["offset"]
     case["volume_offset"] = offset
 
-    scan = run([str(cli), f"{prefix}-scan-vfs", "--file", rel_image, "--offset", str(offset),
-                "--format", "json"], project)
+    scan_cmd = [str(cli), f"{prefix}-scan-vfs", "--file", rel_image, "--offset", str(offset),
+                "--format", "json"]
+    if deleted and fs == "apfs":
+        # APFS deleted files live in stale FS-tree nodes; scanning them is opt-in.
+        scan_cmd.append("--include-deleted")
+    scan = run(scan_cmd, project)
     if scan.returncode != 0:
         case["errors"].append(f"scan: exit {scan.returncode}: {scan.stderr.strip()[-400:]}")
         return case
     entries = json.loads(scan.stdout)["entries"]
     by_path: dict[str, dict] = {}
+    deleted_entries: list[dict] = []
     for entry in entries:
         path = entry["path"]
         if entry["kind"] != "File" or path.startswith(IGNORED_PREFIXES) or "/._" in path:
             continue
-        by_path[path] = entry
+        if entry.get("status") == "Deleted":
+            deleted_entries.append(entry)
+        else:
+            by_path[path] = entry
 
     found = extracted = 0
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
     for index, (path, data) in enumerate(sorted(expected.items())):
-        entry = by_path.get(path)
+        if path in deleted:
+            entry = next((e for e in deleted_entries if deleted_name_matches(path, e["path"])
+                          and e.get("size") == len(data)), None)
+        else:
+            entry = by_path.get(path)
         if entry is None:
             case["errors"].append(f"missing: {path}")
             continue
@@ -144,6 +222,9 @@ def main() -> int:
     parser.add_argument("--cli", default="target/debug/polik-recovery")
     parser.add_argument("--report", default="target/real-fs-gate/report.json")
     parser.add_argument("--filesystems", default="fat32,exfat,apfs")
+    parser.add_argument("--with-deleted", action="store_true",
+                        help="also mount disposable images, delete files and check recovery "
+                             "(requires human approval)")
     parser.add_argument("--require-all", action="store_true",
                         help="treat every filesystem as required, including future known gaps")
     args = parser.parse_args()
@@ -176,6 +257,23 @@ def main() -> int:
             print(f"{status} {fs}/{layout}: found {case.get('found_files', 0)}/"
                   f"{len(expected)}, hash {case.get('hash_matched_files', 0)}/{len(expected)}"
                   + (f" — {case['errors'][0]}" if case["errors"] else ""))
+
+    if args.with_deleted:
+        for fs in [name.strip() for name in args.filesystems.split(",") if name.strip()]:
+            fs_value = FILESYSTEMS[fs][0]
+            image = images / f"{fs}_deleted.dmg"
+            create_image(src, image, fs_value, "NONE")
+            delete_files_in_image(image, work / "mnt" / fs, DELETED_PATHS)
+            case = evaluate(cli, project, image, fs, "NONE+deleted", expected,
+                            work / "out" / f"{fs}_deleted", DELETED_PATHS)
+            case["required"] = DELETED_REQUIRED[fs] or args.require_all
+            cases.append(case)
+            status = "PASS" if case.get("passed") else ("FAIL" if case["required"] else "KNOWN-GAP")
+            deleted_errors = [e for e in case["errors"]
+                              if any(p in e for p in DELETED_PATHS)]
+            print(f"{status} {fs}/deleted: found {case.get('found_files', 0)}/{len(expected)}, "
+                  f"hash {case.get('hash_matched_files', 0)}/{len(expected)}"
+                  + (f" — {'; '.join(deleted_errors[:5])}" if deleted_errors else ""))
 
     report = project / args.report
     report.parent.mkdir(parents=True, exist_ok=True)

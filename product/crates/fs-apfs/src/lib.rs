@@ -443,6 +443,20 @@ pub fn read_apfs_volume_statuses<S: BlockSource + ?Sized>(
     statuses
 }
 
+/// Scan live entries plus deleted files recovered from stale FS-tree nodes.
+/// This reads every block of the container, so it is much slower than
+/// [`scan_apfs_vfs`]. Returns only live entries for non-reference layouts.
+pub fn scan_apfs_vfs_with_deleted<S: BlockSource + ?Sized>(
+    source: &S,
+    csb: &ApfsContainerSuperblock,
+    volume_offset: u64,
+) -> Result<Vec<ApfsEntry>, ApfsError> {
+    if let Some(volumes) = spec::index_volumes_with_options(source, csb, volume_offset, true) {
+        return Ok(volumes.iter().flat_map(|v| v.entries()).collect());
+    }
+    scan_apfs_vfs(source, csb, volume_offset)
+}
+
 pub fn scan_apfs_vfs<S: BlockSource + ?Sized>(
     source: &S,
     csb: &ApfsContainerSuperblock,
@@ -590,14 +604,23 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
     let mut compressed = false;
 
     let spec_volumes = spec::index_volumes(source, csb, volume_offset);
+    let find = |volumes: &[spec::SpecVolumeIndex]| {
+        volumes.iter().find_map(|index| {
+            index
+                .file_extents(inode_id)
+                .map(|(found, is_compressed)| (found, is_compressed, index.volume.encrypted))
+        })
+    };
     if let Some(volumes) = &spec_volumes {
-        for index in volumes {
-            if let Some((found, is_compressed)) = index.file_extents(inode_id) {
-                extents = found;
-                compressed = is_compressed;
-                encrypted_hint = index.volume.encrypted;
-                break;
-            }
+        // Fall back to stale-node records only when the inode is not live.
+        let hit = find(volumes).or_else(|| {
+            spec::index_volumes_with_options(source, csb, volume_offset, true)
+                .and_then(|all| find(&all))
+        });
+        if let Some((found, is_compressed, encrypted)) = hit {
+            extents = found;
+            compressed = is_compressed;
+            encrypted_hint = encrypted;
         }
     }
 

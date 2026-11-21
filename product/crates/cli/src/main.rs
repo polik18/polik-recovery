@@ -254,7 +254,8 @@ fn run(args: Vec<String>) -> Result<(), CliError> {
             let path = arg_value(&args, "--file")?;
             let volume_offset = optional_u64(&args, "--offset")?.unwrap_or(0);
             let format = output_format(&args)?;
-            apfs_scan_vfs(path, volume_offset, format)
+            let include_deleted = args.iter().any(|arg| arg == "--include-deleted");
+            apfs_scan_vfs(path, volume_offset, format, include_deleted)
         }
         "apfs-extract" => {
             let path = arg_value(&args, "--file")?;
@@ -1041,12 +1042,21 @@ fn fat32_extract(
     Ok(())
 }
 
-fn apfs_scan_vfs(path: &str, volume_offset: u64, format: OutputFormat) -> Result<(), CliError> {
+fn apfs_scan_vfs(
+    path: &str,
+    volume_offset: u64,
+    format: OutputFormat,
+    include_deleted: bool,
+) -> Result<(), CliError> {
     let source = FileBlockSource::open(PathBuf::from(path)).map_err(runtime)?;
     let csb = data_recovery_fs_apfs::read_container_superblock(&source, volume_offset)
         .map_err(runtime)?;
-    let entries =
-        data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, volume_offset).map_err(runtime)?;
+    let entries = if include_deleted {
+        data_recovery_fs_apfs::scan_apfs_vfs_with_deleted(&source, &csb, volume_offset)
+    } else {
+        data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, volume_offset)
+    }
+    .map_err(runtime)?;
     let tree = data_recovery_vfs::tree_from_apfs_entries(&entries);
 
     match format {
@@ -1133,8 +1143,13 @@ fn apfs_extract(
     let csb = data_recovery_fs_apfs::read_container_superblock(&source, volume_offset)
         .map_err(runtime)?;
 
-    let entries =
+    let mut entries =
         data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, volume_offset).map_err(runtime)?;
+    if !entries.iter().any(|e| e.inode == inode_id) {
+        // The inode may belong to a deleted file only visible in stale nodes.
+        entries = data_recovery_fs_apfs::scan_apfs_vfs_with_deleted(&source, &csb, volume_offset)
+            .map_err(runtime)?;
+    }
     let Some(entry) = entries.iter().find(|e| e.inode == inode_id) else {
         return Err(CliError::runtime(format!(
             "entry at inode {inode_id} was not found"
@@ -1723,7 +1738,7 @@ fn print_usage() {
   polik-recovery fat32-scan-vfs --file <image> [--offset <bytes>] [--format text|json]
   polik-recovery fat32-extract --file <image> --entry-id <bytes-offset> --output <path> [--offset <bytes>]
   polik-recovery apfs-info --file <image> [--offset <bytes>]
-  polik-recovery apfs-scan-vfs --file <image> [--offset <bytes>] [--format text|json]
+  polik-recovery apfs-scan-vfs --file <image> [--offset <bytes>] [--format text|json] [--include-deleted]
   polik-recovery apfs-extract --file <image> --inode <inode_id> --output <path> [--offset <bytes>]
   polik-recovery carve --file <path> --output-dir <path> [--format text|json]
   Raw-device commands are disabled in this preview. Use a controlled image-first workflow."
@@ -2067,7 +2082,7 @@ fn run_wizard() -> Result<(), CliError> {
                         "2" => {
                             let format = ask_format();
                             println!("\n[正在執行 apfs-scan-vfs...]");
-                            if let Err(e) = apfs_scan_vfs(&path, offset, format) {
+                            if let Err(e) = apfs_scan_vfs(&path, offset, format, false) {
                                 println!("❌ 執行錯誤: {e}");
                             }
                         }

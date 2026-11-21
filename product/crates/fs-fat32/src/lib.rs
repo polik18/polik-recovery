@@ -415,6 +415,10 @@ pub fn read_entry_data<S: BlockSource + ?Sized>(
 pub fn parse_directory_entries(buf: &[u8], base_offset: u64) -> Vec<Fat32Entry> {
     let mut entries = Vec::new();
     let mut lfn_parts: Vec<(u8, Vec<u16>)> = Vec::new();
+    // Deleted LFN entries lose their sequence byte (overwritten with 0xE5)
+    // but keep their characters and short-name checksum. They are stored in
+    // reverse order on disk, so keep encounter order and reverse later.
+    let mut deleted_lfn: Vec<(u8, Vec<u16>)> = Vec::new();
     let mut i = 0;
     while i + 32 <= buf.len() {
         let entry_offset = base_offset + i as u64;
@@ -427,12 +431,17 @@ pub fn parse_directory_entries(buf: &[u8], base_offset: u64) -> Vec<Fat32Entry> 
         if attr == 0x0F {
             if first != 0xE5 {
                 lfn_parts.push((first & 0x1F, parse_lfn_chars(entry)));
+                deleted_lfn.clear();
+            } else {
+                deleted_lfn.push((entry[13], parse_lfn_chars(entry)));
+                lfn_parts.clear();
             }
             i += 32;
             continue;
         }
         if attr & 0x08 != 0 {
             lfn_parts.clear();
+            deleted_lfn.clear();
             i += 32;
             continue;
         }
@@ -444,8 +453,14 @@ pub fn parse_directory_entries(buf: &[u8], base_offset: u64) -> Vec<Fat32Entry> 
         let first_cluster = (high << 16) | low;
         let size = u32::from_le_bytes([entry[28], entry[29], entry[30], entry[31]]) as u64;
         let short_name = parse_short_name(entry, is_deleted);
-        let name = lfn_name(&lfn_parts).unwrap_or_else(|| short_name.clone());
+        let lfn = if is_deleted {
+            deleted_lfn_name(&deleted_lfn, entry)
+        } else {
+            lfn_name(&lfn_parts)
+        };
+        let name = lfn.unwrap_or_else(|| short_name.clone());
         lfn_parts.clear();
+        deleted_lfn.clear();
 
         if name != "." && name != ".." {
             entries.push(Fat32Entry {
@@ -553,6 +568,43 @@ fn parse_lfn_chars(entry: &[u8]) -> Vec<u16> {
     chars
 }
 
+/// Rebuild a deleted long file name. Every fragment carries the checksum of
+/// its short name, but deletion overwrote the short name's first byte with
+/// 0xE5 and any checksum is reachable by some first byte. So the fragments
+/// are only accepted when the checksum matches with the first byte that the
+/// long name implies (its first character upper-cased), or when the long
+/// name starts with a non-ASCII character whose 8.3 alias is unpredictable.
+fn deleted_lfn_name(parts: &[(u8, Vec<u16>)], short_entry: &[u8]) -> Option<String> {
+    let checksum = parts.first()?.0;
+    if parts.iter().any(|(sum, _)| *sum != checksum) {
+        return None;
+    }
+    let chars = parts
+        .iter()
+        .rev()
+        .flat_map(|(_, part)| part.iter().copied())
+        .collect::<Vec<_>>();
+    let name = String::from_utf16_lossy(&chars)
+        .trim_end_matches('\u{0}')
+        .to_string();
+    let first = name.chars().find(|c| *c != '.')?;
+    if first.is_ascii() {
+        let mut short = [0_u8; 11];
+        short.copy_from_slice(short_entry.get(0..11)?);
+        short[0] = first.to_ascii_uppercase() as u8;
+        if short_name_checksum(&short) != checksum {
+            return None;
+        }
+    }
+    Some(name).filter(|name| !name.trim().is_empty())
+}
+
+fn short_name_checksum(short: &[u8; 11]) -> u8 {
+    short
+        .iter()
+        .fold(0_u8, |sum, byte| sum.rotate_right(1).wrapping_add(*byte))
+}
+
 fn lfn_name(parts: &[(u8, Vec<u16>)]) -> Option<String> {
     if parts.is_empty() {
         return None;
@@ -605,6 +657,68 @@ fn parse_short_name(entry: &[u8], is_deleted: bool) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn lfn_entry(sequence: u8, checksum: u8, chars: &[u16]) -> [u8; 32] {
+        let mut entry = [0xff_u8; 32];
+        entry[0] = sequence;
+        entry[11] = 0x0F;
+        entry[12] = 0;
+        entry[13] = checksum;
+        entry[26] = 0;
+        entry[27] = 0;
+        let slots = [1usize, 3, 5, 7, 9, 14, 16, 18, 20, 22, 24, 28, 30];
+        for (index, slot) in slots.iter().enumerate() {
+            let value = match index.cmp(&chars.len()) {
+                std::cmp::Ordering::Less => chars[index],
+                std::cmp::Ordering::Equal => 0,
+                std::cmp::Ordering::Greater => 0xffff,
+            };
+            entry[*slot..*slot + 2].copy_from_slice(&value.to_le_bytes());
+        }
+        entry
+    }
+
+    fn deleted_lfn_directory(corrupt_checksum: bool) -> Vec<u8> {
+        let mut short = [b' '; 32];
+        short[0..11].copy_from_slice(b"GONE_S~1TXT");
+        let mut name11 = [0_u8; 11];
+        name11.copy_from_slice(&short[0..11]);
+        let mut checksum = short_name_checksum(&name11);
+        if corrupt_checksum {
+            checksum = checksum.wrapping_add(1);
+        }
+        short[0] = 0xE5;
+        short[11] = 0x20;
+        short[12] = 0;
+        short[26..28].copy_from_slice(&5_u16.to_le_bytes());
+        short[28..32].copy_from_slice(&760_u32.to_le_bytes());
+        let name = "gone_small.txt".encode_utf16().collect::<Vec<_>>();
+        let mut buf = Vec::new();
+        // On disk the last fragment comes first; deletion overwrites the
+        // sequence byte of every fragment with 0xE5.
+        buf.extend_from_slice(&lfn_entry(0xE5, checksum, &name[13..]));
+        buf.extend_from_slice(&lfn_entry(0xE5, checksum, &name[..13]));
+        buf.extend_from_slice(&short);
+        buf.extend_from_slice(&[0_u8; 32]);
+        buf
+    }
+
+    #[test]
+    fn recovers_deleted_long_file_name() {
+        let entries = parse_directory_entries(&deleted_lfn_directory(false), 0);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].is_deleted);
+        assert_eq!(entries[0].name, "gone_small.txt");
+        assert_eq!(entries[0].size, 760);
+    }
+
+    #[test]
+    fn deleted_long_name_with_wrong_checksum_falls_back_to_short_name() {
+        let entries = parse_directory_entries(&deleted_lfn_directory(true), 0);
+        assert_eq!(entries.len(), 1);
+        assert!(entries[0].is_deleted);
+        assert_eq!(entries[0].name, "_ONE_S~1.TXT");
+    }
 
     #[test]
     fn short_name_honours_nt_lowercase_flags() {

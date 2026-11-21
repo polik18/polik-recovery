@@ -20,6 +20,7 @@ const OBJECT_TYPE_BTREE: u32 = 0x0000_0002;
 const OBJECT_TYPE_BTREE_NODE: u32 = 0x0000_0003;
 const OBJECT_TYPE_OMAP: u32 = 0x0000_000b;
 const OBJECT_TYPE_FS: u32 = 0x0000_000d;
+const OBJECT_TYPE_FSTREE: u32 = 0x0000_000e;
 
 const BTNODE_ROOT: u16 = 0x0001;
 const BTNODE_LEAF: u16 = 0x0002;
@@ -73,16 +74,26 @@ pub struct SpecVolumeIndex {
     inodes: HashMap<u64, Inode>,
     drecs: Vec<(u64, u64, String, bool)>,
     extents: HashMap<u64, Vec<FileExtent>>,
+    /// Records recovered from stale (no longer referenced) FS-tree leaf
+    /// nodes; only populated when deleted-file scanning was requested.
+    deleted_inodes: HashMap<u64, Inode>,
+    deleted_drecs: Vec<(u64, u64, String, bool)>,
+    deleted_extents: HashMap<u64, Vec<FileExtent>>,
 }
 
 impl SpecVolumeIndex {
     pub fn entries(&self) -> Vec<ApfsEntry> {
-        self.drecs
-            .iter()
-            .map(|(parent, child, name, is_dir)| {
-                let inode = self.inodes.get(child);
+        let live = self.drecs.iter().map(|d| (d, false));
+        let deleted = self.deleted_drecs.iter().map(|d| (d, true));
+        live.chain(deleted)
+            .map(|((parent, child, name, is_dir), is_deleted)| {
+                let inode = if is_deleted {
+                    self.deleted_inodes.get(child)
+                } else {
+                    self.inodes.get(child)
+                };
                 ApfsEntry {
-                    is_deleted: false,
+                    is_deleted,
                     is_directory: *is_dir || inode.is_some_and(|i| i.is_dir),
                     name: name.clone(),
                     size: inode.map(|i| i.size).unwrap_or(0),
@@ -102,13 +113,16 @@ impl SpecVolumeIndex {
     /// File extents `(logical_offset, length, physical_block)` for an inode,
     /// plus whether the inode uses transparent compression.
     pub fn file_extents(&self, inode_id: u64) -> Option<(Vec<FileExtent>, bool)> {
-        let inode = self.inodes.get(&inode_id)?;
+        let (inode, extent_map) = match self.inodes.get(&inode_id) {
+            Some(inode) => (inode, &self.extents),
+            None => (self.deleted_inodes.get(&inode_id)?, &self.deleted_extents),
+        };
         let stream = if inode.private_id != 0 {
             inode.private_id
         } else {
             inode_id
         };
-        let mut extents = self.extents.get(&stream).cloned().unwrap_or_default();
+        let mut extents = extent_map.get(&stream).cloned().unwrap_or_default();
         extents.sort_by_key(|extent| extent.0);
         Some((extents, inode.compressed))
     }
@@ -350,6 +364,18 @@ pub fn index_volumes<S: BlockSource + ?Sized>(
     csb: &ApfsContainerSuperblock,
     container_offset: u64,
 ) -> Option<Vec<SpecVolumeIndex>> {
+    index_volumes_with_options(source, csb, container_offset, false)
+}
+
+/// Like [`index_volumes`], optionally scanning every container block for
+/// stale file-system tree leaf nodes to surface deleted files. Deleted-file
+/// scanning reads the whole container and is therefore opt-in.
+pub fn index_volumes_with_options<S: BlockSource + ?Sized>(
+    source: &S,
+    csb: &ApfsContainerSuperblock,
+    container_offset: u64,
+    include_deleted: bool,
+) -> Option<Vec<SpecVolumeIndex>> {
     let reader = Reader {
         source,
         container_offset,
@@ -387,7 +413,161 @@ pub fn index_volumes<S: BlockSource + ?Sized>(
             volumes.push(index);
         }
     }
+    if include_deleted && !volumes.is_empty() {
+        let stale = collect_stale_records(&reader, nx.block_count);
+        // Stale nodes carry no volume identity; attribute them to the first
+        // volume. Multi-volume containers are reported as a limitation.
+        if let Some(first) = volumes.first_mut() {
+            first.attach_deleted(stale);
+        }
+    }
     (!volumes.is_empty()).then_some(volumes)
+}
+
+#[derive(Default)]
+struct StaleRecords {
+    inodes: HashMap<u64, (u64, Inode)>,
+    drecs: HashMap<(u64, String), (u64, u64, bool)>,
+    extents: HashMap<(u64, u64), (u64, FileExtent)>,
+}
+
+impl SpecVolumeIndex {
+    fn attach_deleted(&mut self, stale: StaleRecords) {
+        let live_names: std::collections::HashSet<(u64, &str)> = self
+            .drecs
+            .iter()
+            .map(|(parent, _, name, _)| (*parent, name.as_str()))
+            .collect();
+        let mut seen = std::collections::HashSet::new();
+        let mut deleted = Vec::new();
+        for ((parent, name), (_, child, is_dir)) in &stale.drecs {
+            if self.inodes.contains_key(child) || live_names.contains(&(*parent, name.as_str())) {
+                continue;
+            }
+            if seen.insert(*child) {
+                deleted.push((*parent, *child, name.clone(), *is_dir));
+            }
+        }
+        deleted.sort_by(|a, b| (a.0, &a.2).cmp(&(b.0, &b.2)));
+        let mut deleted_extents: HashMap<u64, Vec<FileExtent>> = HashMap::new();
+        for ((stream, _), (_, extent)) in stale.extents {
+            deleted_extents.entry(stream).or_default().push(extent);
+        }
+        self.deleted_inodes = stale
+            .inodes
+            .into_iter()
+            .filter(|(id, _)| !self.inodes.contains_key(id))
+            .map(|(id, (_, inode))| (id, inode))
+            .collect();
+        self.deleted_drecs = deleted;
+        self.deleted_extents = deleted_extents;
+    }
+}
+
+/// Scan every container block for checksum-valid FS-tree leaf nodes and keep
+/// the newest version (by node xid) of each record.
+fn collect_stale_records<S: BlockSource + ?Sized>(
+    reader: &Reader<'_, S>,
+    block_count: u64,
+) -> StaleRecords {
+    const BATCH_BLOCKS: u64 = 256;
+    let mut stale = StaleRecords::default();
+    let block_size = reader.block_size;
+    let mut chunk = vec![0_u8; block_size * BATCH_BLOCKS as usize];
+    let mut base = 0_u64;
+    while base < block_count {
+        let count = BATCH_BLOCKS.min(block_count - base) as usize;
+        let Some(offset) = base
+            .checked_mul(block_size as u64)
+            .and_then(|o| o.checked_add(reader.container_offset))
+        else {
+            break;
+        };
+        let buf = &mut chunk[..count * block_size];
+        let read = match reader.source.read_at(offset, buf) {
+            Ok(read) => read.bytes_read,
+            Err(_) => 0,
+        };
+        for block in buf[..read - read % block_size].chunks_exact(block_size) {
+            let (Some(obj_type), Some(subtype)) = (le_u32(block, 24), le_u32(block, 28)) else {
+                continue;
+            };
+            if obj_type & OBJECT_TYPE_MASK != OBJECT_TYPE_BTREE_NODE
+                && obj_type & OBJECT_TYPE_MASK != OBJECT_TYPE_BTREE
+                || subtype != OBJECT_TYPE_FSTREE
+            {
+                continue;
+            }
+            if le_u64(block, 0) != Some(fletcher64(block)) {
+                continue;
+            }
+            let xid = le_u64(block, 16).unwrap_or(0);
+            let Some(node) = Node::parse(block.to_vec()) else {
+                continue;
+            };
+            if !node.is_leaf() {
+                continue;
+            }
+            for (key, value) in node.records() {
+                stale.absorb(xid, key, value);
+            }
+        }
+        if read < buf.len() {
+            break;
+        }
+        base += count as u64;
+    }
+    stale
+}
+
+impl StaleRecords {
+    fn absorb(&mut self, xid: u64, key: &[u8], value: &[u8]) {
+        let Some(header) = le_u64(key, 0) else {
+            return;
+        };
+        let obj_id = header & OBJ_ID_MASK;
+        match header >> 60 {
+            APFS_TYPE_INODE => {
+                if let Some(inode) = parse_inode(value) {
+                    let slot = self.inodes.entry(obj_id).or_insert((xid, inode.clone()));
+                    if xid >= slot.0 {
+                        *slot = (xid, inode);
+                    }
+                }
+            }
+            APFS_TYPE_DIR_REC => {
+                if let Some((name, child, is_dir)) = parse_drec(key, value) {
+                    if obj_id == ROOT_DIR_PARENT {
+                        return;
+                    }
+                    let slot = self
+                        .drecs
+                        .entry((obj_id, name))
+                        .or_insert((xid, child, is_dir));
+                    if xid >= slot.0 {
+                        *slot = (xid, child, is_dir);
+                    }
+                }
+            }
+            APFS_TYPE_FILE_EXTENT => {
+                let logical = le_u64(key, 8);
+                let len = le_u64(value, 0).map(|v| v & 0x00ff_ffff_ffff_ffff);
+                let phys = le_u64(value, 8);
+                if let (Some(logical), Some(len), Some(phys)) = (logical, len, phys) {
+                    if len > 0 {
+                        let slot = self
+                            .extents
+                            .entry((obj_id, logical))
+                            .or_insert((xid, (logical, len, phys)));
+                        if xid >= slot.0 {
+                            *slot = (xid, (logical, len, phys));
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
 }
 
 fn index_volume<S: BlockSource + ?Sized>(
@@ -440,6 +620,9 @@ fn index_volume<S: BlockSource + ?Sized>(
         inodes,
         drecs,
         extents,
+        deleted_inodes: HashMap::new(),
+        deleted_drecs: Vec::new(),
+        deleted_extents: HashMap::new(),
     })
 }
 
@@ -559,6 +742,71 @@ mod tests {
         assert_eq!(inode.private_id, 77);
         assert!(!inode.is_dir);
         assert!(!inode.compressed);
+    }
+
+    fn inode_record(id: u64, size: u64) -> (Vec<u8>, Vec<u8>) {
+        let key = ((APFS_TYPE_INODE << 60) | id).to_le_bytes().to_vec();
+        let mut value = vec![0_u8; 92];
+        value[8..16].copy_from_slice(&id.to_le_bytes());
+        value[80..82].copy_from_slice(&0o100644_u16.to_le_bytes());
+        value.extend_from_slice(&1_u16.to_le_bytes());
+        value.extend_from_slice(&40_u16.to_le_bytes());
+        value.extend_from_slice(&[INO_EXT_TYPE_DSTREAM, 0, 40, 0]);
+        let mut dstream = [0_u8; 40];
+        dstream[0..8].copy_from_slice(&size.to_le_bytes());
+        value.extend_from_slice(&dstream);
+        (key, value)
+    }
+
+    fn drec_record(parent: u64, name: &str, child: u64) -> (Vec<u8>, Vec<u8>) {
+        let name = format!("{name}\0");
+        let mut key = ((APFS_TYPE_DIR_REC << 60) | parent).to_le_bytes().to_vec();
+        key.extend_from_slice(&(name.len() as u32).to_le_bytes());
+        key.extend_from_slice(name.as_bytes());
+        let mut value = vec![0_u8; 18];
+        value[0..8].copy_from_slice(&child.to_le_bytes());
+        value[16..18].copy_from_slice(&8_u16.to_le_bytes());
+        (key, value)
+    }
+
+    #[test]
+    fn stale_records_surface_only_deleted_files_with_newest_version() {
+        let mut stale = StaleRecords::default();
+        for (xid, (key, value)) in [
+            (3, inode_record(20, 100)),
+            (5, inode_record(20, 4096)),
+            (5, drec_record(2, "gone.bin", 20)),
+            (5, inode_record(21, 7)),
+            (5, drec_record(2, "live.txt", 21)),
+        ] {
+            stale.absorb(xid, &key, &value);
+        }
+        let mut index = SpecVolumeIndex {
+            volume: SpecVolume {
+                fs_oid: 1,
+                role: 0,
+                encrypted: false,
+                name: String::new(),
+                omap_oid: 0,
+                root_tree_oid: 0,
+                extentref_tree_oid: 0,
+                snap_meta_tree_oid: 0,
+            },
+            inodes: HashMap::from([(21, parse_inode(&inode_record(21, 7).1).unwrap())]),
+            drecs: vec![(2, 21, "live.txt".to_string(), false)],
+            extents: HashMap::new(),
+            deleted_inodes: HashMap::new(),
+            deleted_drecs: Vec::new(),
+            deleted_extents: HashMap::new(),
+        };
+        index.attach_deleted(stale);
+        let entries = index.entries();
+        let deleted: Vec<_> = entries.iter().filter(|e| e.is_deleted).collect();
+        assert_eq!(deleted.len(), 1);
+        assert_eq!(deleted[0].name, "gone.bin");
+        assert_eq!(deleted[0].size, 4096);
+        assert_eq!(deleted[0].parent_inode, ROOT_DIR_PARENT);
+        assert_eq!(entries.iter().filter(|e| !e.is_deleted).count(), 1);
     }
 
     #[test]
