@@ -71,6 +71,7 @@ struct Inode {
 #[derive(Debug, Clone)]
 pub struct SpecVolumeIndex {
     pub volume: SpecVolume,
+    block_size: u64,
     inodes: HashMap<u64, Inode>,
     drecs: Vec<(u64, u64, String, bool)>,
     extents: HashMap<u64, Vec<FileExtent>>,
@@ -108,6 +109,44 @@ impl SpecVolumeIndex {
                 }
             })
             .collect()
+    }
+
+    /// Whether `inode_id` is only known from stale (deleted) records.
+    pub fn is_deleted_inode(&self, inode_id: u64) -> bool {
+        !self.inodes.contains_key(&inode_id) && self.deleted_inodes.contains_key(&inode_id)
+    }
+
+    /// Logical byte ranges of a deleted file whose physical blocks are now
+    /// owned by a live file, i.e. definitely overwritten.
+    pub fn live_overlap_ranges(&self, extents: &[FileExtent]) -> Vec<(u64, u64)> {
+        let bs = self.block_size.max(1);
+        let mut live: Vec<(u64, u64)> = self
+            .extents
+            .values()
+            .flatten()
+            .filter(|(_, len, phys)| *len > 0 && *phys != 0)
+            .map(|(_, len, phys)| (*phys, phys.saturating_add(len.div_ceil(bs))))
+            .collect();
+        live.sort_unstable();
+        let mut overlaps = Vec::new();
+        for (logical, len, phys) in extents {
+            let blocks = len.div_ceil(bs);
+            for block in 0..blocks {
+                let pblock = phys.saturating_add(block);
+                let idx = live.partition_point(|(start, _)| *start <= pblock);
+                let owned = live[..idx]
+                    .iter()
+                    .rev()
+                    .take(64)
+                    .any(|(s, e)| *s <= pblock && pblock < *e);
+                if owned {
+                    let start = logical.saturating_add(block * bs);
+                    let end = (logical.saturating_add(*len)).min(start.saturating_add(bs));
+                    overlaps.push((start, end.saturating_sub(start)));
+                }
+            }
+        }
+        overlaps
     }
 
     /// File extents `(logical_offset, length, physical_block)` for an inode,
@@ -617,6 +656,7 @@ fn index_volume<S: BlockSource + ?Sized>(
     })?;
     Some(SpecVolumeIndex {
         volume,
+        block_size: reader.block_size as u64,
         inodes,
         drecs,
         extents,
@@ -676,6 +716,15 @@ fn parse_drec(key: &[u8], value: &[u8]) -> Option<(String, u64, bool)> {
         return None;
     }
     Some((name, child, flags & DREC_TYPE_MASK == DT_DIR))
+}
+
+/// True when `block` is a checksum-valid APFS object, meaning a freed data
+/// block has since been reused for file-system metadata.
+pub fn is_apfs_object_block(block: &[u8]) -> bool {
+    let (Some(cksum), Some(obj_type)) = (le_u64(block, 0), le_u32(block, 24)) else {
+        return false;
+    };
+    cksum != 0 && obj_type & OBJECT_TYPE_MASK != 0 && cksum == fletcher64(block)
 }
 
 fn c_string(bytes: &[u8]) -> String {
@@ -782,6 +831,7 @@ mod tests {
             stale.absorb(xid, &key, &value);
         }
         let mut index = SpecVolumeIndex {
+            block_size: 4096,
             volume: SpecVolume {
                 fs_oid: 1,
                 role: 0,

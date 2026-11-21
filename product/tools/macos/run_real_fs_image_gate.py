@@ -51,6 +51,11 @@ DELETED_PATHS = frozenset({
     "/docs/f07.txt",
     "/docs/nested/small.dat",
 })
+# After deletion, fill the remaining free space so freed blocks are reused.
+# The tool must then either recover the bytes or flag them as overwritten;
+# silently returning wrong bytes is a failure. A deleted entry whose own
+# directory record was reused is genuinely gone and counted as lost.
+OVERWRITE_REQUIRED = {"fat32": True, "exfat": True, "apfs": True}
 # Deleted-file recovery is only required where it is proven to work.
 DELETED_REQUIRED = {"fat32": True, "exfat": True, "apfs": True}
 IGNORED_PREFIXES = ("/.fseventsd", "/.Spotlight-V100", "/.Trashes", "/.TemporaryItems")
@@ -105,7 +110,8 @@ def image_mount_point(image: Path) -> str | None:
     return None
 
 
-def delete_files_in_image(image: Path, mount: Path, paths: frozenset[str]) -> None:
+def delete_files_in_image(image: Path, mount: Path, paths: frozenset[str],
+                          fill_free_space: bool = False) -> None:
     """Attach a disposable image privately, delete `paths`, then detach."""
     if mount.exists():
         shutil.rmtree(mount)
@@ -119,6 +125,15 @@ def delete_files_in_image(image: Path, mount: Path, paths: frozenset[str]) -> No
         for rel in sorted(paths):
             (mount / rel.lstrip("/")).unlink()
         subprocess.run(["sync"], check=True)
+        if fill_free_space:
+            rng = random.Random(4242)
+            try:
+                with open(mount / "filler.bin", "wb") as filler:
+                    while True:
+                        filler.write(rng.randbytes(1024 * 1024))
+            except OSError:
+                pass  # ENOSPC is the goal
+            subprocess.run(["sync"], check=True)
     finally:
         for attempt in range(3):
             if subprocess.run(["hdiutil", "detach", str(mount)],
@@ -143,7 +158,8 @@ def sha256(data: bytes) -> str:
 
 def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
              expected: dict[str, bytes], out_dir: Path,
-             deleted: frozenset[str] = frozenset()) -> dict:
+             deleted: frozenset[str] = frozenset(),
+             allow_missing_deleted: bool = False) -> dict:
     _, prefix, id_flag, _ = FILESYSTEMS[fs]
     case = {"filesystem": fs, "layout": layout, "image": str(image.relative_to(project)),
             "errors": []}
@@ -183,7 +199,7 @@ def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
         else:
             by_path[path] = entry
 
-    found = extracted = 0
+    found = extracted = flagged = lost = 0
     if out_dir.exists():
         shutil.rmtree(out_dir)
     out_dir.mkdir(parents=True)
@@ -194,7 +210,10 @@ def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
         else:
             entry = by_path.get(path)
         if entry is None:
-            case["errors"].append(f"missing: {path}")
+            if allow_missing_deleted and path in deleted:
+                lost += 1
+            else:
+                case["errors"].append(f"missing: {path}")
             continue
         if entry.get("size") != len(data):
             case["errors"].append(f"size: {path} expected {len(data)} got {entry.get('size')}")
@@ -208,12 +227,22 @@ def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
         if ext.returncode != 0 or not output.exists():
             case["errors"].append(f"extract: {path}: {ext.stderr.strip()[-300:]}")
             continue
+        quality = next((line.split(":", 1)[1].strip() for line in ext.stdout.splitlines()
+                        if line.startswith("quality:")), "")
+        if path in deleted and quality == "complete":
+            case["errors"].append(f"deleted file claimed complete: {path}")
+            continue
         if sha256(output.read_bytes()) != sha256(data):
-            case["errors"].append(f"sha256: {path}")
+            if path in deleted and quality == "deleted_overwritten":
+                flagged += 1  # honestly reported as overwritten
+            else:
+                case["errors"].append(f"sha256 (unflagged, quality={quality or 'n/a'}): {path}")
             continue
         extracted += 1
     case.update({"expected_files": len(expected), "found_files": found,
-                 "hash_matched_files": extracted, "passed": not case["errors"]})
+                 "hash_matched_files": extracted, "flagged_overwritten": flagged,
+                 "lost_deleted_entries": lost,
+                 "passed": not case["errors"]})
     return case
 
 
@@ -272,8 +301,31 @@ def main() -> int:
             deleted_errors = [e for e in case["errors"]
                               if any(p in e for p in DELETED_PATHS)]
             print(f"{status} {fs}/deleted: found {case.get('found_files', 0)}/{len(expected)}, "
-                  f"hash {case.get('hash_matched_files', 0)}/{len(expected)}"
+                  f"hash {case.get('hash_matched_files', 0)}/{len(expected)}, "
+                  f"flagged overwritten {case.get('flagged_overwritten', 0)}"
                   + (f" — {'; '.join(deleted_errors[:5])}" if deleted_errors else ""))
+
+        for fs in [name.strip() for name in args.filesystems.split(",") if name.strip()]:
+            fs_value = FILESYSTEMS[fs][0]
+            image = images / f"{fs}_overwritten.dmg"
+            create_image(src, image, fs_value, "NONE")
+            delete_files_in_image(image, work / "mnt" / fs, DELETED_PATHS, fill_free_space=True)
+            case = evaluate(cli, project, image, fs, "NONE+deleted+filled", expected,
+                            work / "out" / f"{fs}_overwritten", DELETED_PATHS,
+                            allow_missing_deleted=True)
+            # Detection must actually be exercised: at least one flagged file.
+            if case.get("passed") and case.get("flagged_overwritten", 0) == 0 \
+                    and case.get("lost_deleted_entries", 0) == 0 \
+                    and case.get("hash_matched_files", 0) < len(expected):
+                case["errors"].append("no overwritten file was flagged")
+                case["passed"] = False
+            case["required"] = OVERWRITE_REQUIRED[fs] or args.require_all
+            cases.append(case)
+            status = "PASS" if case.get("passed") else ("FAIL" if case["required"] else "KNOWN-GAP")
+            print(f"{status} {fs}/overwritten: hash {case.get('hash_matched_files', 0)}/"
+                  f"{len(expected)}, flagged overwritten {case.get('flagged_overwritten', 0)}, "
+                  f"lost {case.get('lost_deleted_entries', 0)}"
+                  + (f" — {'; '.join(case['errors'][:3])}" if case["errors"] else ""))
 
     report = project / args.report
     report.parent.mkdir(parents=True, exist_ok=True)

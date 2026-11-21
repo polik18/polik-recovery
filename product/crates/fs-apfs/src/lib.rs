@@ -562,6 +562,12 @@ pub struct ApfsReadReport {
     pub sparse_or_missing_extents: bool,
     pub reason: String,
     pub extent_reads: Vec<ApfsExtentRead>,
+    /// The file was recovered from stale (deleted) metadata. APFS has no data
+    /// checksums, so such output can never be proven intact.
+    pub deleted_source: bool,
+    /// Logical ranges known to be overwritten since deletion (blocks now
+    /// owned by a live file, or reused for APFS metadata).
+    pub overwritten_ranges: Vec<(u64, u64)>,
 }
 
 /// Extract file data from APFS extent records and return a detailed quality report.
@@ -596,19 +602,35 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
             sparse_or_missing_extents: false,
             reason: "zero_length_file".to_string(),
             extent_reads: Vec::new(),
+            deleted_source: false,
+            overwritten_ranges: Vec::new(),
         });
     }
 
     let mut extents: Vec<(u64, u64, u64)> = Vec::new();
     let mut encrypted_hint = false;
     let mut compressed = false;
+    let mut deleted_source = false;
+    let mut overwritten_ranges: Vec<(u64, u64)> = Vec::new();
 
     let spec_volumes = spec::index_volumes(source, csb, volume_offset);
     let find = |volumes: &[spec::SpecVolumeIndex]| {
         volumes.iter().find_map(|index| {
-            index
-                .file_extents(inode_id)
-                .map(|(found, is_compressed)| (found, is_compressed, index.volume.encrypted))
+            index.file_extents(inode_id).map(|(found, is_compressed)| {
+                let deleted = index.is_deleted_inode(inode_id);
+                let overlaps = if deleted {
+                    index.live_overlap_ranges(&found)
+                } else {
+                    Vec::new()
+                };
+                (
+                    found,
+                    is_compressed,
+                    index.volume.encrypted,
+                    deleted,
+                    overlaps,
+                )
+            })
         })
     };
     if let Some(volumes) = &spec_volumes {
@@ -617,10 +639,12 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
             spec::index_volumes_with_options(source, csb, volume_offset, true)
                 .and_then(|all| find(&all))
         });
-        if let Some((found, is_compressed, encrypted)) = hit {
+        if let Some((found, is_compressed, encrypted, deleted, overlaps)) = hit {
             extents = found;
             compressed = is_compressed;
             encrypted_hint = encrypted;
+            deleted_source = deleted;
+            overwritten_ranges = overlaps;
         }
     }
 
@@ -694,6 +718,15 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
             .read_at(extent_disk_offset, &mut temp_buf)
             .map_err(ApfsError::Read)?;
         let actual = read.bytes_read.min(temp_buf.len()) as u64;
+        if deleted_source {
+            let bs = csb.block_size as usize;
+            for (index, block) in temp_buf[..actual as usize].chunks(bs).enumerate() {
+                if block.len() == bs && spec::is_apfs_object_block(block) {
+                    let start = logical_offset + (index * bs) as u64;
+                    overwritten_ranges.push((start, block.len() as u64));
+                }
+            }
+        }
         if actual > 0 {
             let start = logical_offset as usize;
             let end = start + actual as usize;
@@ -739,11 +772,19 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
 
     let bytes_lost = file_size.saturating_sub(bytes_read_total.min(file_size));
     let sparse_or_missing_extents = !merged.is_empty();
+    overwritten_ranges.sort_unstable();
+    overwritten_ranges.dedup();
     let complete = bytes_read_total >= file_size
         && !sparse_or_missing_extents
         && !encrypted_hint
-        && !compressed;
-    let reason = if compressed {
+        && !compressed
+        && !deleted_source;
+    let reason = if deleted_source && !overwritten_ranges.is_empty() {
+        "deleted_file_blocks_overwritten; output quarantined as damaged".to_string()
+    } else if deleted_source {
+        "deleted_file_from_stale_metadata; apfs has no data checksum, content unverified"
+            .to_string()
+    } else if compressed {
         "apfs_transparent_compression_not_supported; output quarantined".to_string()
     } else if encrypted_hint {
         "volume_has_crypto_metadata; output may require unlocked/decrypted APFS context".to_string()
@@ -770,6 +811,8 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
         sparse_or_missing_extents,
         reason,
         extent_reads,
+        deleted_source,
+        overwritten_ranges,
     })
 }
 

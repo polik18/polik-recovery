@@ -63,6 +63,7 @@
 | OLE/CFBF carving | `experimental` | no published precision/recall corpus |
 | SHA-256 output manifest | `experimental` | hash can verify output bytes, not original-file correctness |
 | Partial recovery reporting | `experimental` | exact unreadable ranges and zero-filled regions need schema-level evidence |
+| Deleted-file overwrite detection | `experimental` | deleted outputs are never labelled complete (`deleted_unverified`); blocks/clusters now owned by live files (and, for APFS, reused as metadata) are reported as `deleted_overwritten` and quarantined. `run_real_fs_image_gate.py --with-deleted` fills free space after deletion and requires every wrong output to be flagged (FAT32 5/5 flagged, exFAT 4 flagged + 1 entry genuinely lost, APFS 1 flagged on the local run); detection cannot see reuse by free-space bookkeeping outside live files |
 | Atomic output / crash recovery | `experimental` | canonical alpha checks capacity; macOS uses handle-relative staging and Windows binds reparse-safe opened file/directory handles to physical extents before flush/no-replace commit. Deterministic disk-full injection and the valid data-final/manifest-partial reconciliation path pass locally; abrupt power loss and exact release-artifact evidence remain absent |
 
 ## Promotion rule

@@ -443,6 +443,56 @@ pub(crate) fn perform_extract(
                 .iter()
                 .find(|e| e.file_offset == entry_id)
                 .ok_or_else(|| "找不到該 Entry ID".to_string())?;
+            if entry.is_deleted {
+                // Deleted entries can never be proven intact: route them to
+                // suspect/possible, or suspect/partial when clusters are now
+                // owned by live files (overwritten since deletion).
+                let live =
+                    data_recovery_fs_exfat::live_cluster_set(&source, &boot, offset, &entries);
+                let assessment = data_recovery_fs_exfat::assess_deleted_entry(
+                    &source,
+                    &boot,
+                    offset,
+                    entry.first_cluster,
+                    entry.size,
+                    entry.no_fat_chain,
+                    &live,
+                );
+                let data = data_recovery_fs_exfat::read_clusters(
+                    &source,
+                    &boot,
+                    offset,
+                    &assessment.clusters,
+                    entry.size,
+                )
+                .map_err(|e| e.to_string())?;
+                let overwritten = assessment.overwritten_bytes > 0;
+                let category = if overwritten { "partial" } else { "possible" };
+                let quarantine_path = quarantine_output_path(&output_path, category);
+                if let Some(parent) = quarantine_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!("無法建立 exFAT 刪除檔隔離目錄 {}：{}", parent.display(), e)
+                    })?;
+                }
+                let manifest = write_recovered(&quarantine_path, &data, None)?;
+                return Ok(format!(
+                    "{}\n檔名：{}\n讀取方式：{}\n已被覆寫：{} bytes\n隔離路徑：{}\nSHA-256：{}\n提醒：刪除檔案沒有資料校驗碼，內容無法保證與原檔相同，請人工開啟確認。",
+                    if overwritten {
+                        "⚠️ exFAT 刪除檔部分區塊已被其他檔案覆寫，已隔離為受損輸出。"
+                    } else {
+                        "📦 exFAT 刪除檔已救回並隔離為「可能完整」，內容未經驗證。"
+                    },
+                    entry.name,
+                    if assessment.used_chain {
+                        "保留的 FAT chain"
+                    } else {
+                        "first cluster 起連續讀取"
+                    },
+                    assessment.overwritten_bytes,
+                    manifest.output.display(),
+                    manifest.sha256
+                ));
+            }
             let mut recovery_note = if entry.is_deleted {
                 "刪除項目：優先依目錄 entry 與 FAT chain 還原".to_string()
             } else {
@@ -494,6 +544,56 @@ pub(crate) fn perform_extract(
                 .iter()
                 .find(|e| e.file_offset == entry_id)
                 .ok_or_else(|| "找不到該 FAT32 Entry ID".to_string())?;
+            if entry.is_deleted {
+                // Deleted entries can never be proven intact: route them to
+                // suspect/possible, or suspect/partial when clusters are now
+                // owned by live files (overwritten since deletion).
+                let live =
+                    data_recovery_fs_fat32::live_cluster_set(&source, &boot, offset, &entries);
+                let assessment = data_recovery_fs_fat32::assess_deleted_entry(
+                    &source,
+                    &boot,
+                    offset,
+                    entry.first_cluster,
+                    entry.size,
+                    false,
+                    &live,
+                );
+                let data = data_recovery_fs_fat32::read_clusters(
+                    &source,
+                    &boot,
+                    offset,
+                    &assessment.clusters,
+                    entry.size,
+                )
+                .map_err(|e| e.to_string())?;
+                let overwritten = assessment.overwritten_bytes > 0;
+                let category = if overwritten { "partial" } else { "possible" };
+                let quarantine_path = quarantine_output_path(&output_path, category);
+                if let Some(parent) = quarantine_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!("無法建立 FAT32 刪除檔隔離目錄 {}：{}", parent.display(), e)
+                    })?;
+                }
+                let manifest = write_recovered(&quarantine_path, &data, None)?;
+                return Ok(format!(
+                    "{}\n檔名：{}\n讀取方式：{}\n已被覆寫：{} bytes\n隔離路徑：{}\nSHA-256：{}\n提醒：刪除檔案沒有資料校驗碼，內容無法保證與原檔相同，請人工開啟確認。",
+                    if overwritten {
+                        "⚠️ FAT32 刪除檔部分區塊已被其他檔案覆寫，已隔離為受損輸出。"
+                    } else {
+                        "📦 FAT32 刪除檔已救回並隔離為「可能完整」，內容未經驗證。"
+                    },
+                    entry.name,
+                    if assessment.used_chain {
+                        "保留的 FAT chain"
+                    } else {
+                        "first cluster 起連續讀取"
+                    },
+                    assessment.overwritten_bytes,
+                    manifest.output.display(),
+                    manifest.sha256
+                ));
+            }
             let recovery_note = if entry.is_deleted {
                 "刪除項目：FAT chain 可能已清除，已採 first_cluster 連續讀取 fallback"
             } else {

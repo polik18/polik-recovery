@@ -138,8 +138,8 @@ def build_fat32_fragmented(out_dir: Path) -> dict[str, object]:
         ],
         "extracts": [
             {"name": "FRAG.TXT", "entryId": root_offset, "expectedSha256": sha256(active_fragmented), "expectedBytes": len(active_fragmented), "expectedQuality": "complete", "expectedMode": "FatChain"},
-            {"name": "_ELCHN.TXT", "entryId": root_offset + 32, "expectedSha256": sha256(deleted_chain), "expectedBytes": len(deleted_chain), "expectedQuality": "complete", "expectedMode": "FatChain"},
-            {"name": "_ELMIS.TXT", "entryId": root_offset + 64, "expectedSha256": sha256(deleted_missing_chain), "expectedBytes": len(deleted_missing_chain), "expectedQuality": "suspect_partial", "expectedMode": "ContiguousFallback", "allowHashMismatch": True},
+            {"name": "_ELCHN.TXT", "entryId": root_offset + 32, "expectedSha256": sha256(deleted_chain), "expectedBytes": len(deleted_chain), "expectedQuality": "deleted_unverified", "expectedMode": "FatChain"},
+            {"name": "_ELMIS.TXT", "entryId": root_offset + 64, "expectedSha256": sha256(deleted_missing_chain), "expectedBytes": len(deleted_missing_chain), "expectedQuality": "deleted_unverified", "expectedMode": "ContiguousFallback", "allowHashMismatch": True},
         ],
     }
 

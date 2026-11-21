@@ -48,7 +48,7 @@
           "entryId": 1056,
           "expectedSha256": "b1d147245f20fb7e92f8945148f736ab9d9edd1c06c2c6f56bb90239cf057dea",
           "expectedBytes": 661,
-          "expectedQuality": "complete",
+          "expectedQuality": "deleted_unverified",
           "expectedMode": "FatChain"
         },
         {
@@ -56,7 +56,7 @@
           "entryId": 1088,
           "expectedSha256": "f11f46dea4023c18882610e384376d23ede772aeb5bb3dec5f49f30cf1e35c84",
           "expectedBytes": 662,
-          "expectedQuality": "suspect_partial",
+          "expectedQuality": "deleted_unverified",
           "expectedMode": "ContiguousFallback",
           "allowHashMismatch": true
         }

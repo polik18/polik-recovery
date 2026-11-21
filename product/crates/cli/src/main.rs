@@ -897,11 +897,35 @@ fn exfat_extract(
         entry.no_fat_chain,
     )
     .map_err(runtime)?;
+    let deleted = entry.is_deleted.then(|| {
+        let live =
+            data_recovery_fs_exfat::live_cluster_set(&source, &boot, volume_offset, &entries);
+        data_recovery_fs_exfat::assess_deleted_entry(
+            &source,
+            &boot,
+            volume_offset,
+            entry.first_cluster,
+            entry.size,
+            entry.no_fat_chain,
+            &live,
+        )
+    });
+    let data = match &deleted {
+        Some(assessment) => data_recovery_fs_exfat::read_clusters(
+            &source,
+            &boot,
+            volume_offset,
+            &assessment.clusters,
+            entry.size,
+        )
+        .map_err(runtime)?,
+        None => read_report.data.clone(),
+    };
 
     let manifest = data_recovery_safe_writer::write_recovered_file_with_storage_identities(
         path,
         &output_path,
-        &read_report.data,
+        &data,
         Some(file_offset),
         &verified_source,
         &output_identity,
@@ -911,14 +935,23 @@ fn exfat_extract(
     println!("source: {}", source.device().platform_path);
     println!("entry_offset: {file_offset}");
     println!("name: {}", entry.name);
-    println!("recovery_mode: {:?}", read_report.mode);
+    match &deleted {
+        Some(a) if a.used_chain => println!("recovery_mode: FatChain"),
+        Some(_) => println!("recovery_mode: ContiguousAllocation"),
+        None => println!("recovery_mode: {:?}", read_report.mode),
+    }
     println!(
         "quality: {}",
-        if read_report.complete {
-            "complete"
-        } else {
-            "suspect_partial"
+        match &deleted {
+            Some(a) if a.overwritten_bytes > 0 => "deleted_overwritten",
+            Some(_) => "deleted_unverified",
+            None if read_report.complete => "complete",
+            None => "suspect_partial",
         }
+    );
+    println!(
+        "overwritten_bytes: {}",
+        deleted.as_ref().map(|a| a.overwritten_bytes).unwrap_or(0)
     );
     println!("bytes_requested: {}", read_report.bytes_requested);
     println!("bytes_read: {}", read_report.bytes_read);
@@ -1009,10 +1042,34 @@ fn fat32_extract(
         entry.is_deleted,
     )
     .map_err(runtime)?;
+    let deleted = entry.is_deleted.then(|| {
+        let live =
+            data_recovery_fs_fat32::live_cluster_set(&source, &boot, volume_offset, &entries);
+        data_recovery_fs_fat32::assess_deleted_entry(
+            &source,
+            &boot,
+            volume_offset,
+            entry.first_cluster,
+            entry.size,
+            false,
+            &live,
+        )
+    });
+    let data = match &deleted {
+        Some(assessment) => data_recovery_fs_fat32::read_clusters(
+            &source,
+            &boot,
+            volume_offset,
+            &assessment.clusters,
+            entry.size,
+        )
+        .map_err(runtime)?,
+        None => read_report.data.clone(),
+    };
     let manifest = data_recovery_safe_writer::write_recovered_file_with_storage_identities(
         path,
         &output_path,
-        &read_report.data,
+        &data,
         Some(file_offset),
         &verified_source,
         &output_identity,
@@ -1021,14 +1078,23 @@ fn fat32_extract(
     println!("source: {}", source.device().platform_path);
     println!("entry_offset: {file_offset}");
     println!("name: {}", entry.name);
-    println!("recovery_mode: {:?}", read_report.mode);
+    match &deleted {
+        Some(a) if a.used_chain => println!("recovery_mode: FatChain"),
+        Some(_) => println!("recovery_mode: ContiguousFallback"),
+        None => println!("recovery_mode: {:?}", read_report.mode),
+    }
     println!(
         "quality: {}",
-        if read_report.complete {
-            "complete"
-        } else {
-            "suspect_partial"
+        match &deleted {
+            Some(a) if a.overwritten_bytes > 0 => "deleted_overwritten",
+            Some(_) => "deleted_unverified",
+            None if read_report.complete => "complete",
+            None => "suspect_partial",
         }
+    );
+    println!(
+        "overwritten_bytes: {}",
+        deleted.as_ref().map(|a| a.overwritten_bytes).unwrap_or(0)
     );
     println!("bytes_requested: {}", read_report.bytes_requested);
     println!("bytes_read: {}", read_report.bytes_read);
@@ -1183,9 +1249,21 @@ fn apfs_extract(
         "quality: {}",
         if read_report.complete {
             "complete"
+        } else if read_report.deleted_source && !read_report.overwritten_ranges.is_empty() {
+            "deleted_overwritten"
+        } else if read_report.deleted_source {
+            "deleted_unverified"
         } else {
             "suspect_partial"
         }
+    );
+    println!(
+        "overwritten_bytes: {}",
+        read_report
+            .overwritten_ranges
+            .iter()
+            .map(|(_, len)| len)
+            .sum::<u64>()
     );
     println!("bytes_requested: {}", read_report.bytes_requested);
     println!("bytes_read: {}", read_report.bytes_read);

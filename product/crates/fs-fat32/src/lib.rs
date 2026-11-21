@@ -178,6 +178,107 @@ pub struct Fat32Entry {
     pub accessed_time: Option<u64>,
 }
 
+/// How a deleted entry's data would be recovered and how much of it is
+/// known to be overwritten. Deleted entries can never be proven intact
+/// (FAT has no data checksums), so callers must not label them complete.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct DeletedEntryAssessment {
+    pub clusters: Vec<u32>,
+    pub used_chain: bool,
+    pub overwritten_clusters: usize,
+    pub overwritten_bytes: u64,
+}
+
+/// Clusters currently owned by live (non-deleted) entries and the root
+/// directory. A deleted entry whose clusters appear here was overwritten.
+pub fn live_cluster_set<S: BlockSource + ?Sized>(
+    source: &S,
+    boot: &Fat32BootSector,
+    volume_offset: u64,
+    entries: &[Fat32Entry],
+) -> std::collections::HashSet<u32> {
+    let mut live = std::collections::HashSet::new();
+    live.extend(read_fat_chain(source, boot, volume_offset, boot.root_cluster).unwrap_or_default());
+    for entry in entries
+        .iter()
+        .filter(|e| !e.is_deleted && e.first_cluster >= 2)
+    {
+        live.extend(
+            read_fat_chain(source, boot, volume_offset, entry.first_cluster).unwrap_or_default(),
+        );
+    }
+    live
+}
+
+/// Decide which clusters hold a deleted entry's data: its retained FAT chain
+/// when that chain is long enough and owned by no live file, otherwise the
+/// contiguous run from its first cluster. Reports live-owned clusters.
+pub fn assess_deleted_entry<S: BlockSource + ?Sized>(
+    source: &S,
+    boot: &Fat32BootSector,
+    volume_offset: u64,
+    first_cluster: u32,
+    data_len: u64,
+    _no_fat_chain: bool,
+    live: &std::collections::HashSet<u32>,
+) -> DeletedEntryAssessment {
+    let cluster_size = boot.cluster_size();
+    let needed = data_len.div_ceil(cluster_size) as usize;
+    let max_cluster = 2_u64 + boot.cluster_count() as u64;
+    let chain = if first_cluster >= 2 {
+        read_fat_chain(source, boot, volume_offset, first_cluster).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+    let chain_usable =
+        needed > 0 && chain.len() >= needed && chain[..needed].iter().all(|c| !live.contains(c));
+    let (clusters, used_chain) = if chain_usable {
+        (chain[..needed].to_vec(), true)
+    } else if first_cluster >= 2 {
+        let end = (first_cluster as u64 + needed as u64).min(max_cluster);
+        ((first_cluster..end as u32).collect(), false)
+    } else {
+        (Vec::new(), false)
+    };
+    let overwritten_clusters = clusters.iter().filter(|c| live.contains(c)).count();
+    let overwritten_bytes = (overwritten_clusters as u64 * cluster_size).min(data_len);
+    DeletedEntryAssessment {
+        clusters,
+        used_chain,
+        overwritten_clusters,
+        overwritten_bytes,
+    }
+}
+
+/// Read `data_len` bytes from an explicit cluster list.
+pub fn read_clusters<S: BlockSource + ?Sized>(
+    source: &S,
+    boot: &Fat32BootSector,
+    volume_offset: u64,
+    clusters: &[u32],
+    data_len: u64,
+) -> Result<Vec<u8>, Fat32Error> {
+    let cluster_size = boot.cluster_size();
+    let mut output = Vec::with_capacity(data_len.min(usize::MAX as u64) as usize);
+    let mut remaining = data_len;
+    for &cluster in clusters {
+        if remaining == 0 {
+            break;
+        }
+        let Some(offset) = boot.cluster_to_byte_offset(cluster) else {
+            break;
+        };
+        let mut buf = vec![0_u8; remaining.min(cluster_size) as usize];
+        let read = source.read_at(volume_offset + offset, &mut buf)?;
+        output.extend_from_slice(&buf[..read.bytes_read]);
+        if read.bytes_read < buf.len() {
+            break;
+        }
+        remaining -= buf.len() as u64;
+    }
+    Ok(output)
+}
+
 pub fn read_fat_chain<S: BlockSource + ?Sized>(
     source: &S,
     boot: &Fat32BootSector,
