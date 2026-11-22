@@ -3,3 +3,4 @@
 **/.DS_Store
 
 /fixtures/real_fs_generated/
+__pycache__/
