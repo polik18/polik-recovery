@@ -326,8 +326,16 @@ def main() -> int:
             case = evaluate(cli, project, image, fs, "NONE+deleted+filled", expected,
                             work / "out" / f"{fs}_overwritten", DELETED_PATHS,
                             allow_missing_deleted=True, require_exact_deleted=False)
-            # Detection must actually be exercised: at least one flagged file.
-            if case.get("passed") and case.get("flagged_overwritten", 0) == 0:
+            # Detection must actually be exercised: at least one flagged file,
+            # unless filling destroyed every deleted entry's metadata (APFS can
+            # rewrite the nodes that still listed them; then nothing is shown,
+            # which is honest, and nothing is left to flag).
+            all_lost = case.get("lost_deleted_entries", 0) >= len(DELETED_PATHS)
+            if all_lost:
+                case.setdefault("notes", []).append(
+                    "all deleted entries' metadata overwritten; nothing left to flag")
+            if (case.get("passed") and case.get("flagged_overwritten", 0) == 0
+                    and not all_lost):
                 case["errors"].append("no overwritten file was flagged")
                 case["passed"] = False
             case["required"] = OVERWRITE_REQUIRED[fs] or args.require_all
@@ -337,7 +345,8 @@ def main() -> int:
                   f"{len(expected)}, flagged overwritten {case.get('flagged_overwritten', 0)}, "
                   f"lost {case.get('lost_deleted_entries', 0)}, "
                   f"unverified mismatches {case.get('unverified_mismatches', 0)}"
-                  + (f" — {'; '.join(case['errors'][:3])}" if case["errors"] else ""))
+                  + (f" — {'; '.join(case['errors'][:3])}" if case["errors"] else "")
+                  + (f" ({'; '.join(case['notes'])})" if case.get("notes") else ""))
 
     report = project / args.report
     report.parent.mkdir(parents=True, exist_ok=True)

@@ -2,7 +2,7 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 56,
+  "revision": 57,
   "updated_at": "2026-11-22T10:30:00+08:00",
   "updated_by": "claude-code",
   "hot_files_single_owner": [
@@ -796,10 +796,12 @@
         "門禁新增 overwritten 情境（刪除後寫滿空間）：fat32 5 flagged、exfat 4 flagged＋1 lost、apfs 1 flagged，三者必過；內容錯誤未標示即失敗。合成碎片化 fixture 預期值改為 deleted_unverified（產生器同步）。",
         "cargo test 122 passed／0 failed；clippy、四個合成門禁、fixture 重現性、release fail-closed、real gate 12/12 通過。",
         "CI run 44866586838 證據 artifact 分析：fat32_overwritten 中 f07 的叢集 10658–10661 在 FAT 為 0（空閒）卻含 filler 資料——寫滿時最後一次寫入 ENOSPC 被回收，區塊已不屬任何檔案，原理上無法以擁有權偵測。",
-        "門禁規則改為：刪除檔不得標 complete；內容不符僅允許 deleted_unverified／deleted_overwritten；覆寫情境至少標示 1 個；純刪除情境 FAT32/exFAT 仍要求逐位元相符（兩種 macOS 皆穩定），APFS 允許 unverified。CI 失敗時自動上傳映像 artifact（保留 3 天）。"
+        "門禁規則改為：刪除檔不得標 complete；內容不符僅允許 deleted_unverified／deleted_overwritten；覆寫情境至少標示 1 個；純刪除情境 FAT32/exFAT 仍要求逐位元相符（兩種 macOS 皆穩定），APFS 允許 unverified。CI 失敗時自動上傳映像 artifact（保留 3 天）。",
+        "CI run 45002920613：apfs/overwritten 5 檔全部 lost（未顯示，無錯誤標示）。證據映像分析：刪除後 APFS 以 COW 重寫節點，被刪記錄只殘留於新節點的 free space（非 TOC 有效記錄）；仍列有這些記錄的舊節點已被寫滿資料覆蓋，故 metadata 確實消失。門禁改為：全部 lost 時不要求至少標示 1 個（附註說明）。"
       ],
       "notes": [
-        "偵測無法看到被空間管理結構（非現存檔、非 APFS 物件）重用的區塊；這類情況仍以 deleted_unverified 呈現，需人工確認。"
+        "偵測無法看到被空間管理結構（非現存檔、非 APFS 物件）重用的區塊；這類情況仍以 deleted_unverified 呈現，需人工確認。",
+        "後續可研究：從 FSTREE 節點 free space 擷取殘留 drec/inode key（啟發式，需另立工作包與門禁）。"
       ]
     }
   ]
