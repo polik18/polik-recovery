@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 57,
-  "updated_at": "2026-11-22T10:30:00+08:00",
+  "revision": 58,
+  "updated_at": "2026-11-22T13:30:00+08:00",
   "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -802,6 +802,32 @@
       "notes": [
         "偵測無法看到被空間管理結構（非現存檔、非 APFS 物件）重用的區塊；這類情況仍以 deleted_unverified 呈現，需人工確認。",
         "後續可研究：從 FSTREE 節點 free space 擷取殘留 drec/inode key（啟發式，需另立工作包與門禁）。"
+      ]
+    },
+    {
+      "id": "D6",
+      "title": "APFS 節點殘留資料救回已刪除檔（過期節點已被覆蓋時）",
+      "priority": "P2",
+      "depends_on": [
+        "D2",
+        "D5"
+      ],
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-22T13:30:00+08:00",
+      "finished_at": "2026-11-22T13:30:00+08:00",
+      "next_step": null,
+      "blockers": [],
+      "evidence": [
+        "研究：CI run 45002920613 證據映像中被刪記錄只殘留在新節點已釋放的 key/value 空間；釋放區塊開頭 4 bytes 被 free-list 指標覆蓋，故 inode 的 parent id 低位、extent 的長度低位與 extent key 的擁有者皆遺失；inode value 的 private_id、名稱 xfield、dstream 大小與 extent value 的起始區塊完整。",
+        "spec.rs：Node::spans()；Node::residue() 兩階段（先找含名稱的一般檔 inode value 並標記範圍，再於剩餘空間找 extent value，排除 TOC 仍引用的區域）；collect_stale_records 收集每個 leaf 的殘留；attach_residue 排除現存／已由過期節點救回的 id，每個節點依 inode id 與區塊排序一對一配對且僅在數量相等時配對（數量不符時才排除與現存 extent 同起點者再試），檔案列於 /_residue_recovered，區塊為 APFS 物件者剔除；extract reason 新增 node_residue 兩種說明。",
+        "單元測試 3 項（殘留 inode 解析、節點殘留不誤判 dstream／TOC 區、配對規則），cargo test 126 passed／0 failed／1 ignored；clippy、fmt 通過；桌面 e2e 通過。",
+        "門禁新增 apfs/residue：複製 apfs_deleted.dmg 並清除仍引用已刪 inode 的節點，要求至少 1 檔逐位元相符且無誤標；本機 zeroed 3 nodes，3/5 相符、2 標示覆寫。CI 失敗證據新增 *_residue.dmg。",
+        "以 CI run 45002920613 真實 runner 映像（原 5 檔全部 lost）驗證：列出 5/5，2 檔逐位元相符（small.dat、中文檔名.txt），2 檔標 deleted_overwritten，1 檔無法配對未輸出資料。"
+      ],
+      "notes": [
+        "配對是啟發式：老化磁碟上 inode 編號與區塊配置順序未必一致，故結果一律 deleted_unverified 並隔離；假設單一連續 extent（長度已被覆蓋）。父資料夾無法還原。"
       ]
     }
   ]

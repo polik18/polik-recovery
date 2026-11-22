@@ -661,6 +661,7 @@ pub fn extract_apfs_file_data_with_index<S: BlockSource + ?Sized>(
     let mut encrypted_hint = false;
     let mut compressed = false;
     let mut deleted_source = false;
+    let mut residue_source = false;
     let mut overwritten_ranges: Vec<(u64, u64)> = Vec::new();
 
     let spec_volumes = spec::index_volumes(source, csb, volume_offset);
@@ -679,6 +680,7 @@ pub fn extract_apfs_file_data_with_index<S: BlockSource + ?Sized>(
                     index.volume.encrypted,
                     deleted,
                     overlaps,
+                    index.is_residue_inode(inode_id),
                 )
             })
         })
@@ -690,7 +692,8 @@ pub fn extract_apfs_file_data_with_index<S: BlockSource + ?Sized>(
             None => spec::index_volumes_with_options(source, csb, volume_offset, true)
                 .and_then(|all| find(&all)),
         });
-        if let Some((found, is_compressed, encrypted, deleted, overlaps)) = hit {
+        if let Some((found, is_compressed, encrypted, deleted, overlaps, residue)) = hit {
+            residue_source = residue;
             extents = found;
             compressed = is_compressed;
             encrypted_hint = encrypted;
@@ -832,6 +835,12 @@ pub fn extract_apfs_file_data_with_index<S: BlockSource + ?Sized>(
         && !deleted_source;
     let reason = if deleted_source && !overwritten_ranges.is_empty() {
         "deleted_file_blocks_overwritten; output quarantined as damaged".to_string()
+    } else if residue_source && extents.is_empty() {
+        "deleted_file_rebuilt_from_node_residue; data location could not be paired, no data recovered"
+            .to_string()
+    } else if residue_source {
+        "deleted_file_rebuilt_from_node_residue; extent paired heuristically, parent folder unknown, content unverified"
+            .to_string()
     } else if deleted_source {
         "deleted_file_from_stale_metadata; apfs has no data checksum, content unverified"
             .to_string()

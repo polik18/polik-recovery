@@ -38,7 +38,7 @@ pub(crate) fn vfs_quality_hint(
         )),
         "apfs" if deleted => Some((
             "low",
-            "APFS 刪除項目目前僅能依仍存在的 inode/extent 嘗試；snapshot/已覆蓋/TRIM 仍可能無法救回。",
+            "APFS 已刪除檔來自殘留的中繼資料，內容無法驗證；_residue_recovered/ 內的檔案是從節點殘留拼回，原資料夾不明、資料位置為推測配對，請人工確認。",
         )),
         "apfs" => Some((
             "medium",

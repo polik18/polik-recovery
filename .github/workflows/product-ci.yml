@@ -122,6 +122,7 @@ jobs:
             product/target/real-fs-gate/report.json
             product/fixtures/real_fs_generated/*_deleted.dmg
             product/fixtures/real_fs_generated/*_overwritten.dmg
+            product/fixtures/real_fs_generated/*_residue.dmg
 
       - name: Verify release CLI fails closed
         run: |

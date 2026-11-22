@@ -29,6 +29,7 @@ import platform
 import plistlib
 import random
 import shutil
+import struct
 import subprocess
 import sys
 import time
@@ -63,6 +64,8 @@ OVERWRITE_REQUIRED = {"fat32": True, "exfat": True, "apfs": True}
 # In the plain deletion scenario FAT32/exFAT recover byte-exact on every
 # observed macOS version; APFS may reuse freed blocks right after deletion.
 DELETED_EXACT = {"fat32": True, "exfat": True, "apfs": False}
+# Rebuilding APFS deleted files from freed node space (stale nodes destroyed).
+RESIDUE_REQUIRED = True
 # Deleted-file recovery is only required where it is proven to work.
 DELETED_REQUIRED = {"fat32": True, "exfat": True, "apfs": True}
 IGNORED_PREFIXES = ("/.fseventsd", "/.Spotlight-V100", "/.Trashes", "/.TemporaryItems")
@@ -151,12 +154,66 @@ def delete_files_in_image(image: Path, mount: Path, paths: frozenset[str],
             raise RuntimeError(f"could not detach {mount}; detach it manually")
 
 
+RESIDUE_DIR = "/_residue_recovered"
+
+
 def deleted_name_matches(expected_path: str, found_path: str) -> bool:
-    """FAT deletion overwrites the first byte of 8.3-only names."""
+    """FAT deletion overwrites the first byte of 8.3-only names; APFS files
+    rebuilt from node residue lose their parent folder."""
     if expected_path == found_path:
         return True
     head, _, name = expected_path.rpartition("/")
-    return found_path == f"{head}/_{name[1:]}"
+    return found_path in (f"{head}/_{name[1:]}", f"{RESIDUE_DIR}/{name}")
+
+
+def _fletcher64(block: bytes) -> int:
+    s1 = s2 = 0
+    mod = 0xFFFFFFFF
+    for (word,) in struct.iter_unpack("<I", block[8:]):
+        s1 = (s1 + word) % mod
+        s2 = (s2 + s1) % mod
+    c1 = mod - ((s1 + s2) % mod)
+    c2 = mod - ((s1 + c1) % mod)
+    return (c2 << 32) | c1
+
+
+def destroy_apfs_records(src: Path, dst: Path, inode_ids: set[int], block_size: int = 4096) -> int:
+    """Copy an APFS image and zero every checksum-valid FS-tree leaf node
+    whose table of contents still references one of `inode_ids` (inode,
+    extent or directory record). This reproduces what a GitHub runner showed:
+    after deletion the only trace left is residue in freed node space.
+    Works on the copy only; the source image is not modified."""
+    data = bytearray(src.read_bytes())
+    zeroed = 0
+    for blk in range(len(data) // block_size):
+        base = blk * block_size
+        block = bytes(data[base:base + block_size])
+        obj_type, subtype = struct.unpack_from("<II", block, 24)
+        if obj_type & 0xFFFF not in (2, 3) or subtype != 0x0E:
+            continue
+        if struct.unpack_from("<Q", block, 0)[0] != _fletcher64(block):
+            continue
+        flags, level, nkeys = struct.unpack_from("<HHI", block, 32)
+        if level != 0 or flags & 4:
+            continue
+        toc_off, toc_len = struct.unpack_from("<HH", block, 40)
+        key_start = 56 + toc_off + toc_len
+        value_end = block_size - (40 if flags & 1 else 0)
+        hit = False
+        for index in range(nkeys):
+            k_off, k_len, v_off, v_len = struct.unpack_from("<4H", block, 56 + toc_off + index * 8)
+            header = struct.unpack_from("<Q", block, key_start + k_off)[0]
+            kind, obj = header >> 60, header & ((1 << 60) - 1)
+            if kind in (3, 8) and obj in inode_ids:
+                hit = True
+            elif kind == 9 and v_len >= 8:
+                child = struct.unpack_from("<Q", block, value_end - v_off)[0]
+                hit = hit or child in inode_ids
+        if hit:
+            data[base:base + block_size] = bytes(block_size)
+            zeroed += 1
+    dst.write_bytes(data)
+    return zeroed
 
 
 def sha256(data: bytes) -> str:
@@ -257,6 +314,40 @@ def evaluate(cli: Path, project: Path, image: Path, fs: str, layout: str,
     return case
 
 
+def run_residue_case(cli: Path, project: Path, images: Path, work: Path,
+                     expected: dict[str, bytes], require_all: bool) -> dict:
+    """APFS deleted files whose stale nodes are gone: only node residue is
+    left. Builds on apfs_deleted.dmg from the deleted case."""
+    source = images / "apfs_deleted.dmg"
+    image = images / "apfs_residue.dmg"
+    scan = run([str(cli), "apfs-scan-vfs", "--file", str(source.relative_to(project)),
+                "--format", "json", "--include-deleted"], project)
+    ids = set()
+    if scan.returncode == 0:
+        ids = {e["inode"] for e in json.loads(scan.stdout)["entries"]
+               if e.get("status") == "Deleted" and e["kind"] == "File"}
+    zeroed = destroy_apfs_records(source, image, ids)
+    case = evaluate(cli, project, image, "apfs", "NONE+deleted+stale-nodes-destroyed", expected,
+                    work / "out" / "apfs_residue", DELETED_PATHS,
+                    allow_missing_deleted=True, require_exact_deleted=False)
+    live = len(expected) - len(DELETED_PATHS)
+    exact_deleted = case.get("hash_matched_files", 0) - live
+    if not ids or zeroed == 0:
+        case["errors"].append("could not set up residue case (no deleted ids or nodes)")
+        case["passed"] = False
+    elif case.get("passed") and exact_deleted < 1:
+        case["errors"].append("no deleted file recovered byte-exact from node residue")
+        case["passed"] = False
+    case["required"] = RESIDUE_REQUIRED or require_all
+    status = "PASS" if case.get("passed") else ("FAIL" if case["required"] else "KNOWN-GAP")
+    print(f"{status} apfs/residue: zeroed {zeroed} nodes, exact {max(exact_deleted, 0)}/"
+          f"{len(DELETED_PATHS)}, flagged overwritten {case.get('flagged_overwritten', 0)}, "
+          f"lost {case.get('lost_deleted_entries', 0)}, "
+          f"unverified mismatches {case.get('unverified_mismatches', 0)}"
+          + (f" — {'; '.join(case['errors'][:3])}" if case["errors"] else ""))
+    return case
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--cli", default="target/debug/polik-recovery")
@@ -317,6 +408,9 @@ def main() -> int:
                   f"flagged overwritten {case.get('flagged_overwritten', 0)}, "
                   f"unverified mismatches {case.get('unverified_mismatches', 0)}"
                   + (f" — {'; '.join(deleted_errors[:5])}" if deleted_errors else ""))
+
+        if "apfs" in args.filesystems.split(","):
+            cases.append(run_residue_case(cli, project, images, work, expected, args.require_all))
 
         for fs in [name.strip() for name in args.filesystems.split(",") if name.strip()]:
             fs_value = FILESYSTEMS[fs][0]
