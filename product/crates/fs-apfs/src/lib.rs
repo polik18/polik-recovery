@@ -5,10 +5,15 @@ pub mod spec;
 #[derive(Debug)]
 pub enum ApfsError {
     Read(ReadError),
-    ChecksumMismatch { expected: u64, actual: u64 },
+    ChecksumMismatch {
+        expected: u64,
+        actual: u64,
+    },
     InvalidMagic([u8; 4]),
     UnexpectedEof,
     InvalidBlockSize(u32),
+    /// The caller's progress callback asked to stop.
+    Cancelled,
 }
 
 impl std::fmt::Display for ApfsError {
@@ -26,6 +31,7 @@ impl std::fmt::Display for ApfsError {
             ),
             Self::UnexpectedEof => write!(f, "Unexpected end of file/stream"),
             Self::InvalidBlockSize(sz) => write!(f, "Invalid APFS block size: {sz}"),
+            Self::Cancelled => write!(f, "APFS scan cancelled"),
         }
     }
 }
@@ -457,6 +463,36 @@ pub fn scan_apfs_vfs_with_deleted<S: BlockSource + ?Sized>(
     scan_apfs_vfs(source, csb, volume_offset)
 }
 
+/// Deleted-file scan result: the entries to show plus the volume index, which
+/// callers can keep and hand to [`extract_apfs_file_data_with_index`] so each
+/// deleted-file extraction does not rescan the whole container.
+pub struct ApfsDeletedScan {
+    pub entries: Vec<ApfsEntry>,
+    pub index: Option<Vec<spec::SpecVolumeIndex>>,
+}
+
+/// [`scan_apfs_vfs_with_deleted`] with progress over the whole-container pass.
+/// `progress(blocks_scanned, blocks_total)` returning `false` cancels and
+/// yields [`ApfsError::Cancelled`].
+pub fn scan_apfs_vfs_with_deleted_progress<S: BlockSource + ?Sized>(
+    source: &S,
+    csb: &ApfsContainerSuperblock,
+    volume_offset: u64,
+    progress: &mut dyn FnMut(u64, u64) -> bool,
+) -> Result<ApfsDeletedScan, ApfsError> {
+    match spec::index_volumes_with_deleted_progress(source, csb, volume_offset, progress) {
+        Err(spec::ScanCancelled) => Err(ApfsError::Cancelled),
+        Ok(Some(volumes)) => Ok(ApfsDeletedScan {
+            entries: volumes.iter().flat_map(|v| v.entries()).collect(),
+            index: Some(volumes),
+        }),
+        Ok(None) => Ok(ApfsDeletedScan {
+            entries: scan_apfs_vfs(source, csb, volume_offset)?,
+            index: None,
+        }),
+    }
+}
+
 pub fn scan_apfs_vfs<S: BlockSource + ?Sized>(
     source: &S,
     csb: &ApfsContainerSuperblock,
@@ -583,6 +619,20 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
     inode_id: u64,
     file_size: u64,
 ) -> Result<ApfsReadReport, ApfsError> {
+    extract_apfs_file_data_with_index(source, csb, volume_offset, inode_id, file_size, None)
+}
+
+/// Like [`extract_apfs_file_data_with_report`], but uses `deleted_index`
+/// (from [`scan_apfs_vfs_with_deleted_progress`] on the same source) instead
+/// of rescanning the whole container when the inode is not live.
+pub fn extract_apfs_file_data_with_index<S: BlockSource + ?Sized>(
+    source: &S,
+    csb: &ApfsContainerSuperblock,
+    volume_offset: u64,
+    inode_id: u64,
+    file_size: u64,
+    deleted_index: Option<&[spec::SpecVolumeIndex]>,
+) -> Result<ApfsReadReport, ApfsError> {
     if file_size > usize::MAX as u64 {
         return Err(ApfsError::UnexpectedEof);
     }
@@ -635,9 +685,10 @@ pub fn extract_apfs_file_data_with_report<S: BlockSource + ?Sized>(
     };
     if let Some(volumes) = &spec_volumes {
         // Fall back to stale-node records only when the inode is not live.
-        let hit = find(volumes).or_else(|| {
-            spec::index_volumes_with_options(source, csb, volume_offset, true)
-                .and_then(|all| find(&all))
+        let hit = find(volumes).or_else(|| match deleted_index {
+            Some(index) => find(index),
+            None => spec::index_volumes_with_options(source, csb, volume_offset, true)
+                .and_then(|all| find(&all)),
         });
         if let Some((found, is_compressed, encrypted, deleted, overlaps)) = hit {
             extents = found;

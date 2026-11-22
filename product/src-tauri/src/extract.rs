@@ -679,12 +679,9 @@ pub(crate) fn perform_extract(
             let inode_id = selected_id
                 .parse::<u64>()
                 .map_err(|e| format!("無效的 APFS inode / object id: {}", e))?;
-            let entries = data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, offset)
-                .map_err(|e| e.to_string())?;
-            let entry = entries
-                .iter()
-                .find(|e| e.inode == inode_id)
-                .ok_or_else(|| "找不到該 APFS inode / object id".to_string())?;
+            let (entry, deleted_index) =
+                resolve_apfs_entry(&source, file_path, &csb, offset, inode_id, operation_token)?;
+            let entry = &entry;
             if entry.is_directory {
                 return Err("APFS 目前只支援檔案提取，不支援直接輸出資料夾。".to_string());
             }
@@ -695,10 +692,53 @@ pub(crate) fn perform_extract(
                 ));
             }
 
-            let read_report = data_recovery_fs_apfs::extract_apfs_file_data_with_report(
-                &source, &csb, offset, inode_id, entry.size,
+            let read_report = data_recovery_fs_apfs::extract_apfs_file_data_with_index(
+                &source,
+                &csb,
+                offset,
+                inode_id,
+                entry.size,
+                deleted_index.as_deref().map(|v| v.as_slice()),
             )
             .map_err(|e| e.to_string())?;
+
+            if read_report.deleted_source {
+                if read_report.data.is_empty() || recovered_data_is_padding(&read_report.data) {
+                    return Err(format!(
+                        "APFS 已刪除檔只取得空白或填充值資料，已略過。reason={}",
+                        read_report.reason
+                    ));
+                }
+                let overwritten_bytes: u64 = read_report
+                    .overwritten_ranges
+                    .iter()
+                    .map(|(_, len)| *len)
+                    .sum();
+                let (category, quality) = if read_report.overwritten_ranges.is_empty() {
+                    ("possible", "deleted_unverified")
+                } else {
+                    ("partial", "deleted_overwritten")
+                };
+                let suspect_path = quarantine_output_path(&output_path, category);
+                if let Some(parent) = suspect_path.parent() {
+                    std::fs::create_dir_all(parent).map_err(|e| {
+                        format!("無法建立 APFS 已刪除檔隔離目錄 {}：{}", parent.display(), e)
+                    })?;
+                }
+                let manifest = write_recovered(&suspect_path, &read_report.data, Some(inode_id))?;
+                return Ok(format!(
+                    "📦 APFS 已刪除檔已隔離輸出（內容未驗證）。\ninode：{}\n檔名：{}\n品質標記：{}\n可能被覆寫：{} bytes\n已讀：{} bytes\n遺失：{} bytes\nreason：{}\n隔離路徑：{}\nSHA-256：{}\n提醒：APFS 沒有資料校驗碼，已刪除檔的區塊可能已被重用，請人工確認內容。",
+                    inode_id,
+                    entry.name,
+                    quality,
+                    overwritten_bytes,
+                    read_report.bytes_read,
+                    read_report.bytes_lost,
+                    read_report.reason,
+                    manifest.output.display(),
+                    manifest.sha256
+                ));
+            }
 
             if !read_report.complete {
                 if read_report.data.is_empty() || recovered_data_is_padding(&read_report.data) {
@@ -748,6 +788,46 @@ pub(crate) fn perform_extract(
         }
         _ => Err(format!("不支援的模式：{}", mode)),
     }
+}
+
+/// Find an APFS inode among live files, else among deleted files. Deleted
+/// inodes come from the cached deleted-scan index, which is rebuilt once
+/// (whole-container read) when missing so each file does not rescan.
+#[allow(clippy::type_complexity)]
+pub(crate) fn resolve_apfs_entry<S: BlockSource + ?Sized>(
+    source: &S,
+    file_path: &str,
+    csb: &data_recovery_fs_apfs::ApfsContainerSuperblock,
+    offset: u64,
+    inode_id: u64,
+    operation_token: &AtomicBool,
+) -> Result<
+    (
+        data_recovery_fs_apfs::ApfsEntry,
+        Option<Arc<Vec<data_recovery_fs_apfs::spec::SpecVolumeIndex>>>,
+    ),
+    String,
+> {
+    let live =
+        data_recovery_fs_apfs::scan_apfs_vfs(source, csb, offset).map_err(|e| e.to_string())?;
+    if let Some(entry) = live.into_iter().find(|e| e.inode == inode_id) {
+        return Ok((entry, None));
+    }
+    let (entries, index) = match cached_apfs_deleted(file_path, offset) {
+        Some(hit) => hit,
+        None => {
+            apfs_deleted_scan(source, file_path, csb, offset, None, operation_token)?;
+            cached_apfs_deleted(file_path, offset).ok_or_else(|| {
+                "找不到該 APFS inode / object id（已刪除檔索引無法建立）".to_string()
+            })?
+        }
+    };
+    let entry = entries
+        .iter()
+        .find(|e| e.inode == inode_id)
+        .cloned()
+        .ok_or_else(|| "找不到該 APFS inode / object id".to_string())?;
+    Ok((entry, index))
 }
 
 pub(crate) fn unique_output_path(path: PathBuf) -> PathBuf {

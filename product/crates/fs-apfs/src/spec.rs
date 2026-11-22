@@ -415,14 +415,51 @@ pub fn index_volumes_with_options<S: BlockSource + ?Sized>(
     container_offset: u64,
     include_deleted: bool,
 ) -> Option<Vec<SpecVolumeIndex>> {
+    index_volumes_inner(
+        source,
+        csb,
+        container_offset,
+        include_deleted,
+        &mut |_, _| true,
+    )
+    .unwrap_or(None)
+}
+
+/// Deleted-file scanning was stopped by the progress callback.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ScanCancelled;
+
+/// Like [`index_volumes_with_options`] with deleted-file scanning enabled,
+/// reporting `(blocks_scanned, blocks_total)` during the whole-container
+/// stale-node pass. Returning `false` from `progress` cancels the scan.
+pub fn index_volumes_with_deleted_progress<S: BlockSource + ?Sized>(
+    source: &S,
+    csb: &ApfsContainerSuperblock,
+    container_offset: u64,
+    progress: &mut dyn FnMut(u64, u64) -> bool,
+) -> Result<Option<Vec<SpecVolumeIndex>>, ScanCancelled> {
+    index_volumes_inner(source, csb, container_offset, true, progress)
+}
+
+fn index_volumes_inner<S: BlockSource + ?Sized>(
+    source: &S,
+    csb: &ApfsContainerSuperblock,
+    container_offset: u64,
+    include_deleted: bool,
+    progress: &mut dyn FnMut(u64, u64) -> bool,
+) -> Result<Option<Vec<SpecVolumeIndex>>, ScanCancelled> {
     let reader = Reader {
         source,
         container_offset,
         block_size: csb.block_size as usize,
     };
-    let nx = latest_container_superblock(&reader, csb)?;
+    let Some(nx) = latest_container_superblock(&reader, csb) else {
+        return Ok(None);
+    };
     let xid = nx.header.xid;
-    let container_omap = reader.omap_tree_root(nx.omap_oid)?;
+    let Some(container_omap) = reader.omap_tree_root(nx.omap_oid) else {
+        return Ok(None);
+    };
 
     let mut volumes = Vec::new();
     for &fs_oid in nx.fs_oids.iter().filter(|oid| **oid != 0) {
@@ -453,14 +490,14 @@ pub fn index_volumes_with_options<S: BlockSource + ?Sized>(
         }
     }
     if include_deleted && !volumes.is_empty() {
-        let stale = collect_stale_records(&reader, nx.block_count);
+        let stale = collect_stale_records(&reader, nx.block_count, progress)?;
         // Stale nodes carry no volume identity; attribute them to the first
         // volume. Multi-volume containers are reported as a limitation.
         if let Some(first) = volumes.first_mut() {
             first.attach_deleted(stale);
         }
     }
-    (!volumes.is_empty()).then_some(volumes)
+    Ok((!volumes.is_empty()).then_some(volumes))
 }
 
 #[derive(Default)]
@@ -508,13 +545,17 @@ impl SpecVolumeIndex {
 fn collect_stale_records<S: BlockSource + ?Sized>(
     reader: &Reader<'_, S>,
     block_count: u64,
-) -> StaleRecords {
+    progress: &mut dyn FnMut(u64, u64) -> bool,
+) -> Result<StaleRecords, ScanCancelled> {
     const BATCH_BLOCKS: u64 = 256;
     let mut stale = StaleRecords::default();
     let block_size = reader.block_size;
     let mut chunk = vec![0_u8; block_size * BATCH_BLOCKS as usize];
     let mut base = 0_u64;
     while base < block_count {
+        if !progress(base, block_count) {
+            return Err(ScanCancelled);
+        }
         let count = BATCH_BLOCKS.min(block_count - base) as usize;
         let Some(offset) = base
             .checked_mul(block_size as u64)
@@ -556,7 +597,8 @@ fn collect_stale_records<S: BlockSource + ?Sized>(
         }
         base += count as u64;
     }
-    stale
+    progress(block_count, block_count);
+    Ok(stale)
 }
 
 impl StaleRecords {
@@ -864,5 +906,74 @@ mod tests {
         assert!(parse_inode(&[0_u8; 10]).is_none());
         assert!(parse_drec(&[1, 2, 3], &[0_u8; 4]).is_none());
         assert!(Node::parse(vec![0xff_u8; 64]).is_none());
+    }
+
+    struct ZeroSource {
+        device: data_recovery_core::PhysicalDevice,
+        len: u64,
+    }
+
+    impl BlockSource for ZeroSource {
+        fn read_at(
+            &self,
+            offset: u64,
+            buffer: &mut [u8],
+        ) -> Result<data_recovery_core::ReadResult, data_recovery_core::ReadError> {
+            let n = self.len.saturating_sub(offset).min(buffer.len() as u64) as usize;
+            buffer[..n].fill(0);
+            Ok(data_recovery_core::ReadResult {
+                offset,
+                bytes_read: n,
+            })
+        }
+
+        fn device(&self) -> &data_recovery_core::PhysicalDevice {
+            &self.device
+        }
+    }
+
+    fn zero_reader_source(blocks: u64) -> ZeroSource {
+        ZeroSource {
+            device: data_recovery_core::PhysicalDevice {
+                id: "zero".to_string(),
+                display_name: "zero".to_string(),
+                platform_path: "/dev/null".to_string(),
+                size_bytes: blocks * 4096,
+                logical_sector_size: 512,
+                physical_sector_size: 512,
+                bus_type: data_recovery_core::BusType::Sata,
+                is_removable: true,
+                is_system_disk: false,
+                trim_supported: None,
+            },
+            len: blocks * 4096,
+        }
+    }
+
+    #[test]
+    fn stale_scan_reports_progress_and_honours_cancel() {
+        let source = zero_reader_source(1000);
+        let reader = Reader {
+            source: &source,
+            container_offset: 0,
+            block_size: 4096,
+        };
+        let mut calls = Vec::new();
+        let result = collect_stale_records(&reader, 1000, &mut |done, total| {
+            calls.push((done, total));
+            true
+        });
+        assert!(result.is_ok());
+        assert_eq!(calls.first(), Some(&(0, 1000)));
+        assert_eq!(calls.last(), Some(&(1000, 1000)));
+        assert!(calls.windows(2).all(|w| w[0].0 <= w[1].0));
+
+        let mut seen = 0;
+        let cancelled = collect_stale_records(&reader, 1000, &mut |_, _| {
+            seen += 1;
+            seen < 2
+        });
+        assert!(matches!(cancelled, Err(ScanCancelled)));
+        assert_eq!(seen, 2, "scan must stop at the first refused batch");
     }
 }

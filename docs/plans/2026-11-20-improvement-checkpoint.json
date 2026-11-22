@@ -2,8 +2,8 @@
   "schema": "polik-recovery-improvement-checkpoint/v1",
   "plan": "docs/plans/2026-11-20-usability-correctness-performance-plan.md",
   "base_commit": "2283db2",
-  "revision": 55,
-  "updated_at": "2026-11-22T02:30:00+08:00",
+  "revision": 56,
+  "updated_at": "2026-11-22T10:30:00+08:00",
   "updated_by": "claude-code",
   "hot_files_single_owner": [
     "product/src-tauri/src/lib.rs",
@@ -757,16 +757,22 @@
       "depends_on": [
         "D2"
       ],
-      "status": "todo",
-      "owner": null,
-      "branch": null,
-      "started_at": null,
-      "finished_at": null,
-      "next_step": "在 scan.rs APFS 分支加入 include_deleted 參數與進度回報，前端加入勾選項並更新 CSP/前端檢查。",
+      "status": "done",
+      "owner": "claude-code",
+      "branch": "main",
+      "started_at": "2026-11-22T10:30:00+08:00",
+      "finished_at": "2026-11-22T10:30:00+08:00",
+      "next_step": null,
       "blockers": [],
-      "evidence": [],
+      "evidence": [
+        "fs-apfs：collect_stale_records 接受 progress(blocks_done, total)->bool，回傳 false 即 ScanCancelled；新增 spec::index_volumes_with_deleted_progress、scan_apfs_vfs_with_deleted_progress（回傳 entries＋index，ApfsError::Cancelled）、extract_apfs_file_data_with_index（傳入既有 index 時不重掃整個容器）。新增單元測試 stale_scan_reports_progress_and_honours_cancel。",
+        "桌面端：run_recovery_scan 新增選用參數 include_deleted；APFS 分支以 25–80% 進度條回報已讀 MB，並檢查 job token／全域取消；結果快取（以映像路徑、offset、大小、mtime 為鍵）供提取重用，快取不在時提取會重建一次。resolve_apfs_entry 先找現存 inode 再找已刪除 inode；已刪除檔輸出隔離至 suspect/possible（未驗證）或 suspect/partial（已覆寫），不顯示「成功復原」。",
+        "前端：APFS 模式顯示「APFS 掃描範圍」選單（只找現存檔／也找已刪除檔），中英文 i18n；check-product-frontend.py 通過、node --check 通過。",
+        "CLI apfs-extract 改用 progress API＋indexed extract（已刪除檔不再掃兩次容器）。",
+        "cargo test --workspace 123 passed／0 failed／1 ignored；clippy -D warnings、fmt 通過；run_real_fs_image_gate.py --with-deleted 12/12 PASS；桌面 e2e（POLIK_APFS_DELETED_IMAGE=apfs_deleted.dmg，--ignored）：5 個已刪除檔經快取 index 讀取、皆 deleted_source 且非 complete，共 86ms；已加入 Product CI。"
+      ],
       "notes": [
-        "collect_stale_records 需全容器讀取；需接入 job token 取消與進度事件後，再於桌面 APFS 模式提供選項。"
+        "桌面端實際寫檔受實體儲存隔離保護（映像與輸出同一 disk 時拒絕），e2e 測試驗證查找與讀取，寫入沿用既有隔離輸出流程。快取僅保留最近一次 APFS 已刪除掃描。"
       ]
     },
     {

@@ -106,6 +106,12 @@ jobs:
         # approval 2026-11-21, see product/AGENTS.md).
         run: python3 tools/macos/run_real_fs_image_gate.py --with-deleted
 
+      - name: Desktop APFS deleted-file scan on the generated image
+        # Reads the image the previous step generated; no mounting.
+        env:
+          POLIK_APFS_DELETED_IMAGE: ${{ github.workspace }}/product/fixtures/real_fs_generated/apfs_deleted.dmg
+        run: cargo test --locked -p polik-recovery-desktop apfs_deleted -- --ignored
+
       - name: Upload real image gate evidence on failure
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

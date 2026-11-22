@@ -396,11 +396,132 @@ pub(crate) fn emit_scan_activity(
     }
 }
 
+// ── APFS deleted-file index cache ─────────────────────────────────────────────
+//
+// Finding deleted APFS files reads the whole container. The index from the
+// last such scan is kept so extracting deleted files does not rescan per file.
+// It is keyed by image path, offset, size and mtime so a changed image is
+// never matched against stale results.
+
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) struct ApfsIndexKey {
+    path: PathBuf,
+    offset: u64,
+    len: u64,
+    modified: Option<std::time::SystemTime>,
+}
+
+pub(crate) struct ApfsDeletedCache {
+    key: ApfsIndexKey,
+    entries: Arc<Vec<data_recovery_fs_apfs::ApfsEntry>>,
+    index: Option<Arc<Vec<data_recovery_fs_apfs::spec::SpecVolumeIndex>>>,
+}
+
+static APFS_DELETED_CACHE: OnceLock<Mutex<Option<ApfsDeletedCache>>> = OnceLock::new();
+
+pub(crate) fn apfs_index_key(file_path: &str, offset: u64) -> Option<ApfsIndexKey> {
+    let meta = std::fs::metadata(file_path).ok()?;
+    Some(ApfsIndexKey {
+        path: std::fs::canonicalize(file_path).unwrap_or_else(|_| PathBuf::from(file_path)),
+        offset,
+        len: meta.len(),
+        modified: meta.modified().ok(),
+    })
+}
+
+/// Cached deleted-scan entries and index for this image, if any.
+#[allow(clippy::type_complexity)]
+pub(crate) fn cached_apfs_deleted(
+    file_path: &str,
+    offset: u64,
+) -> Option<(
+    Arc<Vec<data_recovery_fs_apfs::ApfsEntry>>,
+    Option<Arc<Vec<data_recovery_fs_apfs::spec::SpecVolumeIndex>>>,
+)> {
+    let key = apfs_index_key(file_path, offset)?;
+    let cache = APFS_DELETED_CACHE
+        .get_or_init(|| Mutex::new(None))
+        .lock()
+        .ok()?;
+    cache
+        .as_ref()
+        .filter(|c| c.key == key)
+        .map(|c| (Arc::clone(&c.entries), c.index.clone()))
+}
+
+/// Whole-container APFS scan for deleted files, with progress and cancel.
+/// Stores the result in the cache for later extraction.
+pub(crate) fn apfs_deleted_scan<S: BlockSource + ?Sized>(
+    source: &S,
+    file_path: &str,
+    csb: &data_recovery_fs_apfs::ApfsContainerSuperblock,
+    offset: u64,
+    notify: Option<&tauri::AppHandle>,
+    operation_token: &AtomicBool,
+) -> Result<Vec<data_recovery_fs_apfs::ApfsEntry>, String> {
+    let block_size = csb.block_size as u64;
+    let mut last_pct = u64::MAX;
+    let mut progress = |done: u64, total: u64| {
+        if operation_token.load(Ordering::SeqCst) || operation_cancelled() {
+            return false;
+        }
+        // 25%–80% of the bar covers the whole-container pass.
+        let pct = if total > 0 {
+            25 + done.saturating_mul(55) / total
+        } else {
+            25
+        };
+        if pct != last_pct {
+            last_pct = pct;
+            let bytes =
+                |blocks: u64| blocks.saturating_mul(block_size).min(usize::MAX as u64) as usize;
+            emit_scan_progress(
+                notify,
+                pct.min(80) as u8,
+                bytes(done),
+                bytes(total),
+                0,
+                &format!(
+                    "搜尋 APFS 已刪除檔：已讀 {} / {} MB...",
+                    bytes(done) / 1_048_576,
+                    bytes(total) / 1_048_576
+                ),
+            );
+        }
+        true
+    };
+    let scan = match data_recovery_fs_apfs::scan_apfs_vfs_with_deleted_progress(
+        source,
+        csb,
+        offset,
+        &mut progress,
+    ) {
+        Ok(scan) => scan,
+        Err(data_recovery_fs_apfs::ApfsError::Cancelled) => {
+            check_cancelled()?;
+            return Err("使用者已中止目前作業。".to_string());
+        }
+        Err(e) => return Err(e.to_string()),
+    };
+    if let (Some(key), Ok(mut cache)) = (
+        apfs_index_key(file_path, offset),
+        APFS_DELETED_CACHE.get_or_init(|| Mutex::new(None)).lock(),
+    ) {
+        *cache = Some(ApfsDeletedCache {
+            key,
+            entries: Arc::new(scan.entries.clone()),
+            index: scan.index.map(Arc::new),
+        });
+    }
+    Ok(scan.entries)
+}
+
 pub(crate) fn perform_scan(
     file_path: &str,
     mode: &str,
     offset: u64,
     count: usize,
+    include_deleted: bool,
     notify: Option<&tauri::AppHandle>,
     operation_token: &AtomicBool,
 ) -> Result<ScanResponse, String> {
@@ -589,8 +710,13 @@ pub(crate) fn perform_scan(
                 block_total,
                 "正在遍歷 APFS B-Tree；此階段沒有可靠的完成百分比…",
             );
-            let entries = data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, offset)
-                .map_err(|e| e.to_string())?;
+            let entries = if include_deleted {
+                apfs_deleted_scan(&source, file_path, &csb, offset, notify, operation_token)?
+            } else {
+                data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, offset)
+                    .map_err(|e| e.to_string())?
+            };
+            check_cancelled()?;
             emit_scan_progress(
                 notify,
                 85,
@@ -614,7 +740,7 @@ pub(crate) fn perform_scan(
                     .join("\n")
             };
             let report = format!(
-                "APFS Container Superblock\nblock_size: {}\nblock_count: {}\nchecksum_status: OK (Fletcher64 Match)\nspaceman_oid: {}\nomap_oid: {}\nreaper_oid: {}\nmax_file_systems: {}\nentries_read: {}\n{}\nextract_note: v1.2 已接上未加密 APFS extent 提取；FileVault/加密、壓縮、clone/snapshot-only 與缺失 extent 會改列 suspect/partial。\nencrypted_hint: {}",
+                "APFS Container Superblock\nblock_size: {}\nblock_count: {}\nchecksum_status: OK (Fletcher64 Match)\nspaceman_oid: {}\nomap_oid: {}\nreaper_oid: {}\nmax_file_systems: {}\nentries_read: {}\ndeleted_scan: {}\n{}\nextract_note: v1.2 已接上未加密 APFS extent 提取；FileVault/加密、壓縮、clone/snapshot-only 與缺失 extent 會改列 suspect/partial。\nencrypted_hint: {}",
                 csb.block_size,
                 csb.block_count,
                 csb.spaceman_oid,
@@ -622,6 +748,11 @@ pub(crate) fn perform_scan(
                 csb.reaper_oid,
                 csb.max_file_systems,
                 entries.len(),
+                if include_deleted {
+                    "on (stale FS-tree nodes; content unverified)"
+                } else {
+                    "off"
+                },
                 volume_lines,
                 encrypted_like
             );

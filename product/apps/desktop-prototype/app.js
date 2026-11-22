@@ -8,7 +8,7 @@ const I18N = {
     scanTitle:'Scanning, please wait...', scanSub:'The system is safely reading disk contents.<br>This process will not modify your data.', scanReading:'Reading...', stopCurrent:'⏹ Stop current operation', scanTip:'Large disks can take longer to scan. Stop requests the current read flow to halt and closes the privileged helper in physical disk mode.',
     safe:{readTitle:'Read-only scan', readSub:'No writes to the source disk', saveTitle:'Save elsewhere', saveSub:'Avoid overwriting original data', pickTitle:'Pick files', pickSub:'Select files after scanning', authTitle:'Authorize once', authSub:'No repeated prompts in one run', imageTitle:'Image first', imageSub:'Scan .img instead of stressing the source'},
     recommendedFlow:'Recommended flow', diskPick:'Create an image (recommended) <span class="muted-inline">- direct physical-disk scanning is disabled</span>', detecting:'- Detecting... -', sourcePath:'Source image path', ntfsDepth:'NTFS scan depth',
-    ntfsOptions:['Standard: estimate full MFT automatically (recommended)','Quick: scan first 10,000 records','Conservative: scan first 50,000 records'], ntfsHelp:'Use Standard when too few files are found. It reads $MFT size first instead of scanning only a fixed short range.',
+    ntfsOptions:['Standard: estimate full MFT automatically (recommended)','Quick: scan first 10,000 records','Conservative: scan first 50,000 records'], ntfsHelp:'Use Standard when too few files are found. It reads $MFT size first instead of scanning only a fixed short range.', apfsScope:'APFS scan scope', apfsScopeOptions:['Existing files only (fast)','Also look for deleted files (reads the whole container, slower)'], apfsScopeHelp:'Deleted APFS files come from leftover metadata. Their content cannot be verified and goes to suspect/.',
     outputPath:'Recovery output folder <span class="danger-inline">do not choose the source disk</span>', choose:'📁 Choose', outputHelp:'Save to Desktop, an external disk, or another safe folder to avoid overwriting the disk being recovered.',
     riskTitle:'🟢 Pre-scan risk check', riskCheckLabel:'Pre-scan risk check', riskReady:'Ready. No obvious risk detected.', riskLow:'Low risk', riskInitial:'<strong>Read-only scan.</strong> Source, format, and output location are checked before scanning to reduce overwrite risk.', riskRecommendation:'Recommendation: save recovered files to another disk',
     imageWorkflowTitle:'🧊 v1.9 Image first + ddrescue map', imageWorkflowBadge:'Recommended flow', imageWorkflowSummary:'For physical disks, create a read-only image first, review the ddrescue map for bad or incomplete areas, then scan the .img.', imageWorkflowCommand:'Choose a source to generate imaging, map visualization, verification, and retry commands.', copyImageWorkflowCommand:'Copy image / map / retry command', regenerate:'Regenerate',
@@ -36,7 +36,7 @@ I18N['zh-Hant'] = {
   steps:{select:'選擇磁碟', scanning:'掃描中', restore:'選擇並還原'}, recommendedFlow:'建議流程', choose:'📁 選擇', regenerate:'重新產生', checkAgain:'重新檢查', notChecked:'尚未檢查', startSafeScan:'▶ 開始安全掃描', previewSample:'👀 先看範例結果', clear:'清除', selectUsable:'全選可用檔', selectedPrefix:'已選', details:'檔案詳細資訊', notSelected:'未選取',
   scanTitle:'正在掃描，請稍候...', scanSub:'系統正在安全地讀取磁碟內容，<br>這個過程不會修改您的任何資料。', scanReading:'讀取中...', stopCurrent:'⏹ 中止目前作業', scanTip:'大型磁碟掃描可能需要較久；按中止會要求目前讀取流程停止，實體磁碟模式會同時關閉管理員權限工作站。',
   safe:{readTitle:'唯讀掃描', readSub:'不寫入來源磁碟', saveTitle:'另存救援', saveSub:'避免覆蓋原資料', pickTitle:'勾選還原', pickSub:'掃完再挑要救的檔案', authTitle:'身分檢查', authSub:'來源與輸出必須是不同實體磁碟', imageTitle:'先建映像', imageSub:'掃 .img，不反覆磨原碟'},
-  diskPick:'建立映像檔（建議） <span class="muted-inline">— 實體磁碟不可直接掃描</span>', detecting:'— 正在偵測... —', sourcePath:'來源映像檔路徑', ntfsDepth:'NTFS 掃描深度', ntfsOptions:['標準：自動估算完整 MFT（建議）','快速：先掃前 10,000 筆','保守：先掃前 50,000 筆'], ntfsHelp:'救援數量太少時請用「標準」；它會先讀取 $MFT 大小估算總紀錄數，而不是固定只掃一小段。',
+  diskPick:'建立映像檔（建議） <span class="muted-inline">— 實體磁碟不可直接掃描</span>', detecting:'— 正在偵測... —', sourcePath:'來源映像檔路徑', ntfsDepth:'NTFS 掃描深度', ntfsOptions:['標準：自動估算完整 MFT（建議）','快速：先掃前 10,000 筆','保守：先掃前 50,000 筆'], ntfsHelp:'救援數量太少時請用「標準」；它會先讀取 $MFT 大小估算總紀錄數，而不是固定只掃一小段。', apfsScope:'APFS 掃描範圍', apfsScopeOptions:['只找現存檔案（快速）','也找已刪除檔（需讀完整個容器，較慢）'], apfsScopeHelp:'APFS 已刪除檔來自殘留的中繼資料，內容無法驗證，還原後會放到 suspect/。',
   outputPath:'還原檔案儲存資料夾 <span class="danger-inline">請勿選來源磁碟</span>', outputHelp:'建議存到桌面、外接硬碟或另一個安全資料夾，避免把新檔案覆蓋到原本要救的磁碟。',
   riskTitle:'🟢 掃描前風險檢查', riskCheckLabel:'掃描前風險檢查', riskReady:'可以開始，尚未偵測到明顯風險。', riskLow:'低風險', riskInitial:'<strong>唯讀掃描。</strong> 開始前會檢查來源、格式與輸出位置，降低覆蓋原資料的風險。', riskRecommendation:'建議：救回檔案存到另一顆磁碟',
   imageWorkflowTitle:'🧊 v1.9 映像檔優先 + ddrescue map', imageWorkflowBadge:'建議流程', imageWorkflowSummary:'如果來源是實體磁碟，建議先建立唯讀映像檔，再用 ddrescue map 報告確認壞區/未完成比例，最後才掃描 .img。', imageWorkflowCommand:'選擇來源後會產生成像、map 視覺化、驗證與 retry 指令。', copyImageWorkflowCommand:'複製成像 / map / retry 指令',
@@ -276,6 +276,10 @@ function applyI18n(){
   const ntfsOpts=tr('ntfsOptions',[]);
   if(Array.isArray(ntfsOpts)) Array.from($('ntfsScanProfile')?.options || []).forEach((opt,idx)=>{ if(ntfsOpts[idx]) opt.textContent=ntfsOpts[idx]; });
   setText('ntfsProfileHelp','ntfsHelp');
+  setText('apfsScopeLabel','apfsScope');
+  const apfsOpts=tr('apfsScopeOptions',[]);
+  if(Array.isArray(apfsOpts)) Array.from($('apfsScanScope')?.options || []).forEach((opt,idx)=>{ if(apfsOpts[idx]) opt.textContent=apfsOpts[idx]; });
+  setText('apfsScopeHelp','apfsScopeHelp');
   setHtml('outputPathLabel','outputPath');
   setText('browseOutput','choose');
   setText('outputPathHelp','outputHelp');
@@ -1516,6 +1520,7 @@ function setModeConfig(mode, {loadSample=true}={}){
   $('modeAdvice').textContent=localized.advice || meta.advice;
   $('modeAdviceIcon').textContent=meta.icon;
   if($('ntfsScanProfileGroup')) $('ntfsScanProfileGroup').style.display = mode==='ntfs' ? '' : 'none';
+  if($('apfsScanScopeGroup')) $('apfsScanScopeGroup').style.display = mode==='apfs' ? '' : 'none';
   if(loadSample && isSampleOutput($('outputPath').value)) {
     $('outputPath').value=defaultRecoveryDir || cfg.output;
   }
@@ -2181,9 +2186,10 @@ async function doScan(){
   setStep(2);setOperationBusy(true, '正在準備掃描...');setAS('正在檢查映像檔與輸出實體磁碟身分...');
   try{
     const scanCount = activeMode==='ntfs' ? ntfsScanCount() : 0;
-    const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount,jobId});
+    const includeDeleted = activeMode==='apfs' && $('apfsScanScope')?.value==='deleted';
+    const res=await core.invoke('run_recovery_scan',{filePath:fp,mode:activeMode,offset:selectedPartitionOffset,count:scanCount,jobId,includeDeleted});
     $('reportInput').value=res.report;$('vfsInput').value=res.vfs;
-    parseInputs(res.entries);void loadRemainingScanPages(res);setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。':'掃描成功，請勾選要還原的檔案。','ok');
+    parseInputs(res.entries);void loadRemainingScanPages(res);setAS(activeMode==='carver'?'掃描成功：已自動過濾未通過檔案結構檢查的碎片。':activeMode==='apfs'?(includeDeleted?'APFS 掃描成功（含已刪除檔）：已刪除檔內容無法驗證，還原後會放到 suspect/。':'APFS 掃描成功：未加密 extent 可嘗試提取；partial 會隔離到 suspect/。'):'掃描成功，請勾選要還原的檔案。','ok');
   }catch(err){
     setStep(1);
     if(isUserCancelError(err)){ setAS('已中止掃描。','error'); }

@@ -600,6 +600,7 @@ async fn run_recovery_scan(
     offset: u64,
     count: usize,
     job_id: String,
+    include_deleted: Option<bool>,
 ) -> Result<ScanResponse, String> {
     validate_image_source_path(&file_path)?;
     let operation_token = begin_operation(&job_id)?;
@@ -614,6 +615,7 @@ async fn run_recovery_scan(
             &scan_mode,
             offset,
             count,
+            include_deleted.unwrap_or(false),
             Some(&scan_app),
             &scan_token,
         )
@@ -826,6 +828,67 @@ mod tests {
         static NEXT_ID: AtomicU64 = AtomicU64::new(0);
         let id = NEXT_ID.fetch_add(1, Ordering::Relaxed);
         std::env::temp_dir().join(format!("polik_tauri_test_{}_{id}", std::process::id()))
+    }
+
+    /// Desktop end-to-end for APFS deleted files on an image produced by
+    /// `tools/macos/run_real_fs_image_gate.py --with-deleted`:
+    /// `POLIK_APFS_DELETED_IMAGE=fixtures/real_fs_generated/apfs_deleted.dmg
+    ///  cargo test -p polik-recovery-desktop apfs_deleted -- --ignored`
+    #[test]
+    #[ignore = "needs a generated APFS image with deleted files"]
+    fn apfs_deleted_scan_extracts_into_quarantine_via_cache() {
+        let image =
+            std::env::var("POLIK_APFS_DELETED_IMAGE").expect("set POLIK_APFS_DELETED_IMAGE");
+        let idle = std::sync::atomic::AtomicBool::new(false);
+
+        let live = super::perform_scan(&image, "apfs", 0, 0, false, None, &idle).unwrap();
+        assert!(live.entries.iter().all(|e| e.status != "Deleted"));
+
+        let cancelled = std::sync::atomic::AtomicBool::new(true);
+        assert!(super::perform_scan(&image, "apfs", 0, 0, true, None, &cancelled).is_err());
+
+        let scan = super::perform_scan(&image, "apfs", 0, 0, true, None, &idle).unwrap();
+        assert!(scan.report.contains("deleted_scan: on"));
+        let deleted: Vec<_> = scan
+            .entries
+            .iter()
+            .filter(|e| e.status == "Deleted" && e.kind == "File")
+            .collect();
+        assert!(!deleted.is_empty(), "deleted scan found no deleted files");
+        assert!(super::cached_apfs_deleted(&image, 0).is_some());
+
+        // Writing is covered by the shared quarantine path; physical-storage
+        // isolation forbids writing next to a local image, so check the
+        // lookup + read that feed it.
+        let source = super::open_source(&image).unwrap();
+        let csb = data_recovery_fs_apfs::read_container_superblock(&source, 0).unwrap();
+        let started = std::time::Instant::now();
+        for entry in &deleted {
+            let inode: u64 = entry.id.parse().unwrap();
+            let (found, index) =
+                super::resolve_apfs_entry(&source, &image, &csb, 0, inode, &idle).unwrap();
+            assert!(found.is_deleted);
+            assert!(
+                index.is_some(),
+                "deleted lookup must reuse the cached index"
+            );
+            let report = data_recovery_fs_apfs::extract_apfs_file_data_with_index(
+                &source,
+                &csb,
+                0,
+                inode,
+                found.size,
+                index.as_deref().map(|v| v.as_slice()),
+            )
+            .unwrap();
+            assert!(report.deleted_source);
+            assert!(!report.complete, "deleted output must never be complete");
+        }
+        eprintln!(
+            "{} deleted lookups+reads in {:?}",
+            deleted.len(),
+            started.elapsed()
+        );
     }
 
     #[test]

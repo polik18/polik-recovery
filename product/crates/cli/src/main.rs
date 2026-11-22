@@ -1211,10 +1211,19 @@ fn apfs_extract(
 
     let mut entries =
         data_recovery_fs_apfs::scan_apfs_vfs(&source, &csb, volume_offset).map_err(runtime)?;
+    let mut deleted_index = None;
     if !entries.iter().any(|e| e.inode == inode_id) {
         // The inode may belong to a deleted file only visible in stale nodes.
-        entries = data_recovery_fs_apfs::scan_apfs_vfs_with_deleted(&source, &csb, volume_offset)
-            .map_err(runtime)?;
+        // Keep the index so extraction does not rescan the whole container.
+        let scan = data_recovery_fs_apfs::scan_apfs_vfs_with_deleted_progress(
+            &source,
+            &csb,
+            volume_offset,
+            &mut |_, _| true,
+        )
+        .map_err(runtime)?;
+        entries = scan.entries;
+        deleted_index = scan.index;
     }
     let Some(entry) = entries.iter().find(|e| e.inode == inode_id) else {
         return Err(CliError::runtime(format!(
@@ -1222,12 +1231,13 @@ fn apfs_extract(
         )));
     };
 
-    let read_report = data_recovery_fs_apfs::extract_apfs_file_data_with_report(
+    let read_report = data_recovery_fs_apfs::extract_apfs_file_data_with_index(
         &source,
         &csb,
         volume_offset,
         inode_id,
         entry.size,
+        deleted_index.as_deref(),
     )
     .map_err(runtime)?;
 
